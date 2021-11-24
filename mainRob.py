@@ -7,6 +7,9 @@ import xml.etree.ElementTree as ET
 CELLROWS=7
 CELLCOLS=14
 
+"""
+CLASS MyRob
+"""
 class MyRob(CRobLinkAngs):
     def __init__(self, rob_name, rob_id, angles, host):
         CRobLinkAngs.__init__(self, rob_name, rob_id, angles, host)
@@ -30,11 +33,32 @@ class MyRob(CRobLinkAngs):
 
         while True:
             self.readSensors()
-
+            
             if self.measures.endLed:
-                print(self.rob_name + " exiting")
+                print(self.robName + " exiting")
                 quit()
 
+            if self.measures.collision:
+                print(self.robName + " collided")
+                quit()   
+
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
+                    
+            
             if state == 'stop' and self.measures.start:
                 state = stopped_state
 
@@ -48,14 +72,16 @@ class MyRob(CRobLinkAngs):
                 if self.measures.ground==0:
                     self.setVisitingLed(True);
                 self.wander()
-            elif state=='wait':
+
+            elif state == 'wait':
                 self.setReturningLed(True)
                 if self.measures.visitingLed==True:
                     self.setVisitingLed(False)
                 if self.measures.returningLed==True:
                     state='return'
                 self.driveMotors(0.0,0.0)
-            elif state=='return':
+
+            elif state == 'return':
                 if self.measures.visitingLed==True:
                     self.setVisitingLed(False)
                 if self.measures.returningLed==True:
@@ -68,22 +94,33 @@ class MyRob(CRobLinkAngs):
         left_id = 1
         right_id = 2
         back_id = 3
-        if    self.measures.irSensor[center_id] > 5.0\
-           or self.measures.irSensor[left_id]   > 5.0\
-           or self.measures.irSensor[right_id]  > 5.0\
-           or self.measures.irSensor[back_id]   > 5.0:
-            print('Rotate left')
-            self.driveMotors(-0.1,+0.1)
-        elif self.measures.irSensor[left_id]> 2.7:
-            print('Rotate slowly right')
-            self.driveMotors(0.1,0.0)
-        elif self.measures.irSensor[right_id]> 2.7:
-            print('Rotate slowly left')
-            self.driveMotors(0.0,0.1)
-        else:
-            print('Go')
-            self.driveMotors(0.1,0.1)
 
+        # if self.measures.irSensor[center_id] > 5.0\
+        #    or self.measures.irSensor[left_id]   > 5.0\
+        #    or self.measures.irSensor[right_id]  > 5.0\
+        #    or self.measures.irSensor[back_id]   > 5.0:
+        #     print('Rotate left')
+        #     self.driveMotors(-0.1,+0.1)
+        # elif self.measures.irSensor[left_id]> 2.7:
+        #     print('Rotate slowly right')
+        #     self.driveMotors(0.1,0.0)
+        # elif self.measures.irSensor[right_id]> 2.7:
+        #     print('Rotate slowly left')
+        #     self.driveMotors(0.0,0.1)
+        # else:
+        # print('Go')
+        self.driveMotors(0.1,0.1)
+        
+    """
+    JS METHODS
+    """
+
+    def computeDeltaPosition(self, lPow, rPow):
+        pass
+
+"""
+CLASS MAP
+"""
 class Map():
     def __init__(self, filename):
         tree = ET.parse(filename)
@@ -98,20 +135,23 @@ class Map():
                for c in range(len(line)):
                    if (c+1) % 3 == 0:
                        if line[c] == '|':
-                           self.labMap[row][(c+1)/3*2-1]='|'
+                           self.labMap[row][(c+1)//3*2-1]='|'
                        else:
                            None
            else:  # this line defines horizontal lines
                for c in range(len(line)):
                    if c % 3 == 0:
                        if line[c] == '-':
-                           self.labMap[row][c/3*2]='-'
+                           self.labMap[row][c//3*2]='-'
                        else:
                            None
                
            i=i+1
 
 
+"""
+MAIN
+"""
 rob_name = "pClient1"
 host = "localhost"
 pos = 1
@@ -131,7 +171,7 @@ for i in range(1, len(sys.argv),2):
         quit()
 
 if __name__ == '__main__':
-    rob=MyRob(rob_name,pos,[0.0,60.0,-60.0,180.0],host)
+    rob=MyRob(rob_name,pos,[0.0,90.0,-90.0,180.0],host)
     if mapc != None:
         rob.setMap(mapc.labMap)
         rob.printMap()
