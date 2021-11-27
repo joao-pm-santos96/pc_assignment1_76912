@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 JS IMPORTS
 """
 import numpy as np
-from numpy.linalg import norm 
+from numpy.linalg import norm, inv, det
 
 #TODO remove
 import matplotlib.pyplot as plt
@@ -27,19 +27,22 @@ class MyRob(CRobLinkAngs):
         self.ir_fov = pi / 3 # 60 deg
         self.wall_thick = 0.2 # 0.1 each side
         self.cell_size = 2
+        self.diameter = 1
 
+        # walls description
         self.walls = None
+
+        # positional stuff
+        self.current_position = None
+        self.last_position = None
+        self.last_velocity = None
+        
+        self.right_speed = 0
+        self.left_speed = 0
 
         # store the expected measurements from each sensor
         self.ground_truth = None
-
-
-
-
-
-
-
-
+        self.cells_probability = None
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -60,6 +63,7 @@ class MyRob(CRobLinkAngs):
 
         while True:
             self.readSensors()
+            print(state)
             
             if self.measures.endLed:
                 print(self.robName + " exiting")
@@ -67,25 +71,12 @@ class MyRob(CRobLinkAngs):
 
             if self.measures.collision:
                 print(self.robName + " collided")
-                quit()   
+                quit()  
 
-            
-
-
-
-
-
-
-
-
-
-
-
-
-
-            
-                    
-            
+            # compute traveled distance
+            self.current_position = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
+              
+            # behaviors
             if state == 'stop' and self.measures.start:
                 state = stopped_state
 
@@ -97,7 +88,7 @@ class MyRob(CRobLinkAngs):
                 if self.measures.visitingLed==True:
                     state='wait'
                 if self.measures.ground==0:
-                    self.setVisitingLed(True);
+                    self.setVisitingLed(True)
                 self.wander()
 
             elif state == 'wait':
@@ -114,13 +105,17 @@ class MyRob(CRobLinkAngs):
                 if self.measures.returningLed==True:
                     self.setReturningLed(False)
                 self.wander()
-            
+
+            if norm(self.current_position[:2]) % self.cell_size == 0:
+
+                print(f'                          {norm(self.current_position[:2]) / self.cell_size}')
+
 
     def wander(self):
-        center_id = 0
-        left_id = 1
-        right_id = 2
-        back_id = 3
+        # center_id = 0
+        # left_id = 1
+        # right_id = 2
+        # back_id = 3        
 
         # if self.measures.irSensor[center_id] > 5.0\
         #    or self.measures.irSensor[left_id]   > 5.0\
@@ -135,16 +130,17 @@ class MyRob(CRobLinkAngs):
         #     print('Rotate slowly left')
         #     self.driveMotors(0.0,0.1)
         # else:
-        # print('Go')
-        self.driveMotors(0.1,0.1)
-        
+        #     print('Go')
 
+        self.left_speed = 0.1
+        self.right_speed = 0.1
 
+        self.driveMotors(self.left_speed, self.right_speed)
 
     """
     JS METHODS
     """
-    def unitVector(self, vector):
+    def _unitVector(self, vector):
         """ Returns the unit vector of the vector.  
         
         Based on https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python
@@ -152,17 +148,17 @@ class MyRob(CRobLinkAngs):
         
         return vector / norm(vector)
 
-    def angleBetween(self, v1, v2):
+    def _angleBetween(self, v1, v2):
         """ Returns the angle in radians between vectors 'v1' and 'v2'.
         """
         # return np.arctan2(np.cross(v1,v2), np.dot(v1,v2))
 
         sign = np.sign(np.cross(v1,v2))
-        dot_product = np.clip(np.dot(self.unitVector(v1), self.unitVector(v2)), -1.0, 1.0)
+        dot_product = np.clip(np.dot(self._unitVector(v1), self._unitVector(v2)), -1.0, 1.0)
         return sign * np.arccos(dot_product)
 
-    def lineIntersection(self, line1, line2):
-        """
+    def _lineIntersection(self, line1, line2):
+        """ Compute the point where two lines intersect, or None if they not.
         
         Based on https://stackoverflow.com/questions/3252194/numpy-and-line-intersections
         """
@@ -188,7 +184,7 @@ class MyRob(CRobLinkAngs):
 
         return (x/z, y/z)
 
-    def rotateVector(self, vector, angle):
+    def _rotateVector(self, vector, angle):
         """ Rotate a vector
         """
         rotation = np.array([[cos(angle), -sin(angle)], [sin(angle), cos(angle)]])
@@ -207,10 +203,10 @@ class MyRob(CRobLinkAngs):
         plt.yticks(range(0, CELLROWS * 2 + 1, 2))
 
         # fov
-        fov0 = self.rotateVector(versor, -1 * self.ir_fov / 2)
+        fov0 = self._rotateVector(versor, -1 * self.ir_fov / 2)
         fov0 = np.multiply(fov0, 100)
 
-        fov1 = self.rotateVector(versor, self.ir_fov / 2)
+        fov1 = self._rotateVector(versor, self.ir_fov / 2)
         fov1 = np.multiply(fov1, 100)
 
         for end_point in [np.add(point, fov0), np.add(point, fov1)]:
@@ -219,19 +215,27 @@ class MyRob(CRobLinkAngs):
         plt.grid(True)
         plt.show()
 
-    def getCellSensorsPoses(self, row, col):
+    def plotProbabilitiesMap(self, wait=0.1):
+
+        plt.imshow(self.cells_probability, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
+
+        plt.ion()
+        plt.show()
+        plt.pause(wait)
+
+    def _getCellSensorsPoses(self, row, col):
         """ Computes all the sensor poses for a given cell
         """
 
         cell_center = (self.cell_size * (col + 0.5), self.cell_size * (row + 0.5))
 
-        versors = [self.rotateVector((1,0), np.deg2rad(x)) for x in self.angs]
+        versors = [self._rotateVector((1,0), np.deg2rad(x)) for x in self.angs]
 
         positions = [np.add(cell_center, np.multiply(versor, 0.5)) for versor in versors]
 
         return (positions, versors)
 
-    def minDistanceToWall(self, point, wall_points):
+    def _minDistanceToWall(self, point, wall_points):
         """ Compute the minimum distance from a point to a wall,
         defined by two points (line segment).
 
@@ -271,7 +275,7 @@ class MyRob(CRobLinkAngs):
 
         return min_dist 
 
-    def getWallsCorners(self):
+    def _getWallsCorners(self):
         """ Compute the corners coordinates (X and Y) of all walls in the map.
         Also, it accounts for thickness. 
         """
@@ -321,7 +325,7 @@ class MyRob(CRobLinkAngs):
         self.walls.append([corner2, corner3])
         
         
-    def computeClosestDistanceToWall(self, point, versor, wall):
+    def _computeClosestDistanceToWall(self, point, versor, wall):
         """ Computes the closest distance to a given wall. If not in FOV, 
         returns None
         """
@@ -332,8 +336,8 @@ class MyRob(CRobLinkAngs):
         sensor_to_corner0 = np.subtract(wall[0], point)
         sensor_to_corner1 = np.subtract(wall[1], point)
 
-        angle0 = self.angleBetween(versor, sensor_to_corner0)
-        angle1 = self.angleBetween(versor, sensor_to_corner1)
+        angle0 = self._angleBetween(versor, sensor_to_corner0)
+        angle1 = self._angleBetween(versor, sensor_to_corner1)
 
         # check if inside FOV (divide by two to use only the one part of it)
         angle0_inside = np.abs(angle0) <= self.ir_fov / 2 
@@ -342,36 +346,38 @@ class MyRob(CRobLinkAngs):
         # case both angles inside fov
         if angle0_inside and angle1_inside:
             
-            distance = self.minDistanceToWall(point, wall)
+            distance = self._minDistanceToWall(point, wall)
 
         # case wall is so close that both angles outside
         elif not (angle0_inside or angle1_inside) and (np.sign(angle0) != np.sign(angle1)):
             
-            distance = self.minDistanceToWall(point, wall)
+            distance = self._minDistanceToWall(point, wall)
 
         # case only one corner is inside
         elif angle0_inside != angle1_inside:
             
             # rotate versor to the direction of the FOV bounds
             theta = np.sign(angle0) * self.ir_fov / 2
-            fov_versor = self.rotateVector(versor, theta)
+            fov_versor = self._rotateVector(versor, theta)
 
             # line from IR sensor
             line_ir = [point, np.add(point, fov_versor)]
-            intersection = self.lineIntersection(line_ir, wall)
+            intersection = self._lineIntersection(line_ir, wall)
 
             subs_index = [angle0_inside, angle1_inside].index(False)
             wall_in_fov = wall.copy() 
             wall_in_fov[subs_index] = intersection
             
-            distance = self.minDistanceToWall(point, wall_in_fov)           
+            distance = self._minDistanceToWall(point, wall_in_fov)           
 
         return distance
 
-    def computeCellMeasures(self, row, col):
+    def _computeCellMeasures(self, row, col):
+        """ Compute the measure done for all sensores in a given cell.
+        """
 
         # compute sensors poses
-        sensors = self.getCellSensorsPoses(row, col)
+        sensors = self._getCellSensorsPoses(row, col)
         measures = []
 
         for dir in range(4):
@@ -383,7 +389,7 @@ class MyRob(CRobLinkAngs):
 
             for wall in self.walls:
 
-                dist = self.computeClosestDistanceToWall(ir_point, ir_versor, wall)
+                dist = self._computeClosestDistanceToWall(ir_point, ir_versor, wall)
                 if dist is not None:
                     distances.append(dist)
 
@@ -391,18 +397,83 @@ class MyRob(CRobLinkAngs):
 
         return measures
 
+    def initProbabilities(self):
+
+        probability = 1 / (CELLCOLS * CELLROWS)
+        self.cells_probability = [[probability] * CELLCOLS for i in range(CELLROWS)]
 
     def computeGroundTruth(self):  
+        """ Compute ground truth measures for all sensors and all cells.
+        """
 
         self.ground_truth = []
 
         # get corners of all walls
-        self.getWallsCorners()
+        self._getWallsCorners()
 
         # iterate over each cell                
         for row in range(CELLROWS):
+            self.ground_truth.append([self._computeCellMeasures(row, col) for col in range(CELLCOLS)])
 
-            self.ground_truth.append([self.computeCellMeasures(row, col) for col in range(CELLCOLS)])
+    def computeTraveledDistance(self, in_left, in_right):
+        """ Compute the traveled distance since the motion started.
+        """
+
+        noise = 1 # it is deterministic motion
+
+        if self.last_position is None:
+            self.last_position = [0] * 3
+
+        if self.last_velocity is None:
+            self.last_velocity = [0] * 2
+
+        out_right = (in_right * 0.5 + self.last_velocity[0] * 0.5) * noise
+        out_left = (in_left * 0.5 + self.last_velocity[1] * 0.5) * noise
+        
+        vel_linear = (out_left + out_right) / 2
+        rotation = (out_left - out_right) / self.diameter
+
+        x = self.last_position[0] + vel_linear * np.cos(self.last_position[2])
+        y = self.last_position[1] + vel_linear * np.sin(self.last_position[2])
+        theta = self.last_position[2] + rotation
+
+        self.last_position = [x, y, theta]
+        self.last_velocity = [out_right, out_left]
+
+        return (x, y, theta)
+
+
+    # def kf_predict(self, X, P, A, Q, B, U):
+    #     X = np.dot(A, X) + np.dot(B, U)
+    #     P = np.dot(A, np.dot(P, A.T)) + Q
+    #     return(X,P) 
+
+    # def kf_update(self, X, P, Y, H, R):
+    #     IM = np.dot(H, X)
+    #     IS = R + np.dot(H, np.dot(P, H.T))
+    #     K = np.dot(P, np.dot(H.T, inv(IS)))
+    #     X = X + np.dot(K, (Y-IM))
+    #     P = P - np.dot(K, np.dot(IS, K.T))
+    #     LH = self._gauss_pdf(Y, IM, IS)
+    #     return (X,P,K,IM,IS,LH)
+
+    # def _gauss_pdf(self, X, M, S):
+    #     if M.shape()[1] == 1:
+    #         DX = X - np.tile(M, X.shape()[1])
+    #         E = 0.5 * sum(DX * (np.dot(inv(S), DX)), axis=0)
+    #         E = E + 0.5 * M.shape()[0] * log(2 * pi) + 0.5 * log(det(S))
+    #         P = exp(-E)
+    #     elif X.shape()[1] == 1:
+    #         DX = np.tile(X, M.shape()[1])- M
+    #         E = 0.5 * sum(DX * (np.dot(inv(S), DX)), axis=0)
+    #         E = E + 0.5 * M.shape()[0] * log(2 * pi) + 0.5 * log(det(S))
+    #         P = exp(-E)
+    #     else:
+    #         DX = X-M
+    #         E = 0.5 * np.dot(DX.T, np.dot(inv(S), DX))
+    #         E = E + 0.5 * M.shape()[0] * log(2 * pi) + 0.5 * log(det(S))
+    #         P = exp(-E)
+    #     return (P[0],E[0]) 
 
 """
 CLASS MAP
@@ -464,15 +535,17 @@ if __name__ == '__main__':
         rob.setMap(mapc.labMap)
         rob.printMap()
 
-        
-        # TODO remove
-        print()
-        rob.computeGroundTruth()
-        print(rob.ground_truth[4][3])
+        #######
+        rob.initProbabilities()
+        # rob.computeGroundTruth()
 
-    
-        rob.readSensors()
-        print(rob.measures.irSensor)
-        # rob.plotMapAndRobot(ir_point, ir_versor, walls)
-        
+        # row = input('Row')
+        # col = input('Col')
+
+        # print(rob.ground_truth[int(row)][int(col)])
+        # rob.readSensors()
+        # print(rob.measures.irSensor)
+
+        # rob.plotProbabilitiesMap(1)
+
     # rob.run()
