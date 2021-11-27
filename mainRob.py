@@ -28,11 +28,10 @@ class MyRob(CRobLinkAngs):
         self.wall_thick = 0.2 # 0.1 each side
         self.cell_size = 2
 
+        self.walls = None
+
         # store the expected measurements from each sensor
-        self.ground_truth = {'center': None,
-            'left': None,
-            'right': None,
-            'back': None}
+        self.ground_truth = None
 
 
 
@@ -201,10 +200,10 @@ class MyRob(CRobLinkAngs):
         for wall in walls:
             plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
 
-        plt.xlim([0, CELLCOLS * 2])
+        plt.xlim([-1, CELLCOLS * 2 + 1])
         plt.xticks(range(0, CELLCOLS * 2 + 1, 2))
 
-        plt.ylim([0, CELLROWS * 2])
+        plt.ylim([-1, CELLROWS * 2 + 1])
         plt.yticks(range(0, CELLROWS * 2 + 1, 2))
 
         # fov
@@ -226,7 +225,8 @@ class MyRob(CRobLinkAngs):
 
         cell_center = (self.cell_size * (col + 0.5), self.cell_size * (row + 0.5))
 
-        versors = [(1,0), (0, 1), (0, -1), (-1, 0)]
+        versors = [self.rotateVector((1,0), np.deg2rad(x)) for x in self.angs]
+
         positions = [np.add(cell_center, np.multiply(versor, 0.5)) for versor in versors]
 
         return (positions, versors)
@@ -276,15 +276,16 @@ class MyRob(CRobLinkAngs):
         Also, it accounts for thickness. 
         """
 
-        walls = []
+        self.walls = []
         wall_indices = []
 
+        # inner walls indices
         for row in range(CELLROWS * self.cell_size - 1):
             for col in range(CELLCOLS * self.cell_size - 1):                
                 if self.labMap[row][col] in ['-', '|']:
                     wall_indices.append((row, col))
 
-
+        # inner walls corners
         for wall in wall_indices:
 
             row = wall[0]
@@ -297,18 +298,27 @@ class MyRob(CRobLinkAngs):
                 side_1 = [((col-1) + self.cell_size -self.wall_thick/2, row), ((col-1)+ self.cell_size -self.wall_thick/2, row+2)]
                 side_2 = [((col-1) + self.cell_size + self.wall_thick/2, row), ((col-1) + self.cell_size + self.wall_thick/2, row + self.cell_size)]
 
-                walls.append(side_1)
-                walls.append(side_2)
+                self.walls.append(side_1)
+                self.walls.append(side_2)
 
             elif wall_direction == '-': # horizontal wall
 
                 side_1 = [(col, (row-1) + self.cell_size -self.wall_thick/2), (col+2, (row-1) + self.cell_size -self.wall_thick/2)]
                 side_2 = [(col,(row-1) + self.cell_size +self.wall_thick/2), (col+2, (row-1) + self.cell_size + self.wall_thick/2)]
 
-                walls.append(side_1)
-                walls.append(side_2) 
+                self.walls.append(side_1)
+                self.walls.append(side_2) 
 
-        return walls
+        # outter walls corners
+        corner0 = (0,0)
+        corner1 = (0, CELLROWS * self.cell_size)
+        corner2 = (CELLCOLS * self.cell_size, CELLROWS * self.cell_size)
+        corner3 = (CELLCOLS * self.cell_size, 0)
+
+        self.walls.append([corner0, corner1])
+        self.walls.append([corner0, corner3])
+        self.walls.append([corner2, corner1])
+        self.walls.append([corner2, corner3])
         
         
     def computeClosestDistanceToWall(self, point, versor, wall):
@@ -358,26 +368,41 @@ class MyRob(CRobLinkAngs):
 
         return distance
 
+    def computeCellMeasures(self, row, col):
+
+        # compute sensors poses
+        sensors = self.getCellSensorsPoses(row, col)
+        measures = []
+
+        for dir in range(4):
+
+            distances = []
+
+            ir_point = sensors[0][dir]
+            ir_versor = sensors[1][dir]
+
+            for wall in self.walls:
+
+                dist = self.computeClosestDistanceToWall(ir_point, ir_versor, wall)
+                if dist is not None:
+                    distances.append(dist)
+
+            measures.append(1/min(distances))
+
+        return measures
+
 
     def computeGroundTruth(self):  
 
+        self.ground_truth = []
+
+        # get corners of all walls
+        self.getWallsCorners()
+
         # iterate over each cell                
         for row in range(CELLROWS):
-            for col in range(CELLCOLS):
-                
-                # compute coordinates of the center of this cell
-                center_cell = (col + self.cell_size / 2, row + self.cell_size / 2)
-                # print(center_cell)
 
-
-
-
-
-
-
-
-
-
+            self.ground_truth.append([self.computeCellMeasures(row, col) for col in range(CELLCOLS)])
 
 """
 CLASS MAP
@@ -442,29 +467,12 @@ if __name__ == '__main__':
         
         # TODO remove
         print()
+        rob.computeGroundTruth()
+        print(rob.ground_truth[4][3])
 
-        for dir in range(4):
-        
-            sensors = rob.getCellSensorsPoses(5,4)
-            ir_point = sensors[0][dir]
-            ir_versor = sensors[1][dir]
-
-            walls = rob.getWallsCorners()
-
-            distances = []
-
-            for id, wall in enumerate(walls):
-                dist = rob.computeClosestDistanceToWall(ir_point, ir_versor, wall)
-                if dist is not None:
-                    distances.append(dist)
-                    min_wall_id = id
-
-            print(f'Min distance: {min(distances)}')
-            print(f'Min measure: {1/min(distances)}')
-
-        
+    
         rob.readSensors()
         print(rob.measures.irSensor)
-        rob.plotMapAndRobot(ir_point, ir_versor, walls)
+        # rob.plotMapAndRobot(ir_point, ir_versor, walls)
         
     # rob.run()
