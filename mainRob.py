@@ -156,8 +156,11 @@ class MyRob(CRobLinkAngs):
     def angleBetween(self, v1, v2):
         """ Returns the angle in radians between vectors 'v1' and 'v2'.
         """
-        # return np.arctan2(norm(np.cross(v1,v2)), np.dot(v1,v2))
-        return np.arctan2(np.cross(v1,v2), np.dot(v1,v2))
+        # return np.arctan2(np.cross(v1,v2), np.dot(v1,v2))
+
+        sign = np.sign(np.cross(v1,v2))
+        dot_product = np.clip(np.dot(self.unitVector(v1), self.unitVector(v2)), -1.0, 1.0)
+        return sign * np.arccos(dot_product)
 
     def lineIntersection(self, line1, line2):
         """
@@ -217,6 +220,16 @@ class MyRob(CRobLinkAngs):
         plt.grid(True)
         plt.show()
 
+    def getCellSensorsPoses(self, row, col):
+        """ Computes all the sensor poses for a given cell
+        """
+
+        cell_center = (self.cell_size * (col + 0.5), self.cell_size * (row + 0.5))
+
+        versors = [(1,0), (0, 1), (0, -1), (-1, 0)]
+        positions = [np.add(cell_center, np.multiply(versor, 0.5)) for versor in versors]
+
+        return (positions, versors)
 
     def minDistanceToWall(self, point, wall_points):
         """ Compute the minimum distance from a point to a wall,
@@ -258,7 +271,6 @@ class MyRob(CRobLinkAngs):
 
         return min_dist 
 
-
     def getWallsCorners(self):
         """ Compute the corners coordinates (X and Y) of all walls in the map.
         Also, it accounts for thickness. 
@@ -267,8 +279,8 @@ class MyRob(CRobLinkAngs):
         walls = []
         wall_indices = []
 
-        for row in range(CELLROWS * 2 - 1):
-            for col in range(CELLCOLS * 2 - 1):                
+        for row in range(CELLROWS * self.cell_size - 1):
+            for col in range(CELLCOLS * self.cell_size - 1):                
                 if self.labMap[row][col] in ['-', '|']:
                     wall_indices.append((row, col))
 
@@ -282,16 +294,16 @@ class MyRob(CRobLinkAngs):
 
             if wall_direction == '|': # vertical wall
                 
-                side_1 = [((col-1)+2-self.wall_thick/2, row), ((col-1)+2-self.wall_thick/2, row+2)]
-                side_2 = [((col-1)+2+self.wall_thick/2, row), ((col-1)+2+self.wall_thick/2, row+2)]
+                side_1 = [((col-1) + self.cell_size -self.wall_thick/2, row), ((col-1)+ self.cell_size -self.wall_thick/2, row+2)]
+                side_2 = [((col-1) + self.cell_size + self.wall_thick/2, row), ((col-1) + self.cell_size + self.wall_thick/2, row + self.cell_size)]
 
                 walls.append(side_1)
                 walls.append(side_2)
 
             elif wall_direction == '-': # horizontal wall
 
-                side_1 = [(col, (row-1)+2-self.wall_thick/2), (col+2, (row-1)+2-self.wall_thick/2)]
-                side_2 = [(col,(row-1)+2+self.wall_thick/2), (col+2, (row-1)+2+self.wall_thick/2)]
+                side_1 = [(col, (row-1) + self.cell_size -self.wall_thick/2), (col+2, (row-1) + self.cell_size -self.wall_thick/2)]
+                side_2 = [(col,(row-1) + self.cell_size +self.wall_thick/2), (col+2, (row-1) + self.cell_size + self.wall_thick/2)]
 
                 walls.append(side_1)
                 walls.append(side_2) 
@@ -299,7 +311,10 @@ class MyRob(CRobLinkAngs):
         return walls
         
         
-    def computeSensorMeasure(self, point, versor, wall):
+    def computeClosestDistanceToWall(self, point, versor, wall):
+        """ Computes the closest distance to a given wall. If not in FOV, 
+        returns None
+        """
 
         distance = None
         
@@ -316,12 +331,12 @@ class MyRob(CRobLinkAngs):
 
         # case both angles inside fov
         if angle0_inside and angle1_inside:
-
+            
             distance = self.minDistanceToWall(point, wall)
 
         # case wall is so close that both angles outside
         elif not (angle0_inside or angle1_inside) and (np.sign(angle0) != np.sign(angle1)):
-
+            
             distance = self.minDistanceToWall(point, wall)
 
         # case only one corner is inside
@@ -341,18 +356,7 @@ class MyRob(CRobLinkAngs):
             
             distance = self.minDistanceToWall(point, wall_in_fov)           
 
-
-
-
-
-        print(f'Distance {distance}')
-
-
-
-
-
-
-
+        return distance
 
 
     def computeGroundTruth(self):  
@@ -438,26 +442,29 @@ if __name__ == '__main__':
         
         # TODO remove
         print()
-        # ir_point = [17+0.5, 1]
-        # ir_versor = [1, 0]
 
-        ir_point = [19, 1+0.5]
-        ir_versor = [0, 1]
+        for dir in range(4):
+        
+            sensors = rob.getCellSensorsPoses(5,4)
+            ir_point = sensors[0][dir]
+            ir_versor = sensors[1][dir]
 
-        walls = rob.getWallsCorners()
+            walls = rob.getWallsCorners()
 
-        for wall in walls:
-            rob.computeSensorMeasure(ir_point, ir_versor, wall)
+            distances = []
 
-        print('Done boss')
+            for id, wall in enumerate(walls):
+                dist = rob.computeClosestDistanceToWall(ir_point, ir_versor, wall)
+                if dist is not None:
+                    distances.append(dist)
+                    min_wall_id = id
 
+            print(f'Min distance: {min(distances)}')
+            print(f'Min measure: {1/min(distances)}')
+
+        
+        rob.readSensors()
+        print(rob.measures.irSensor)
         rob.plotMapAndRobot(ir_point, ir_versor, walls)
         
-
-
-
-
-        # rob.computeGroundTruth() 
-        # rob.wallMinDistance([])
-    
-    rob.run()
+    # rob.run()
