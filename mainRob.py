@@ -4,6 +4,15 @@ from croblink import *
 from math import *
 import xml.etree.ElementTree as ET
 
+"""
+JS IMPORTS
+"""
+import numpy as np
+from numpy.linalg import norm 
+
+#TODO remove
+import matplotlib.pyplot as plt
+
 CELLROWS=7
 CELLCOLS=14
 
@@ -13,6 +22,25 @@ CLASS MyRob
 class MyRob(CRobLinkAngs):
     def __init__(self, rob_name, rob_id, angles, host):
         CRobLinkAngs.__init__(self, rob_name, rob_id, angles, host)
+
+        # data
+        self.ir_fov = pi / 3 # 60 deg
+        self.wall_thick = 0.2 # 0.1 each side
+        self.cell_size = 2
+
+        # store the expected measurements from each sensor
+        self.ground_truth = {'center': None,
+            'left': None,
+            'right': None,
+            'back': None}
+
+
+
+
+
+
+
+
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -111,12 +139,233 @@ class MyRob(CRobLinkAngs):
         # print('Go')
         self.driveMotors(0.1,0.1)
         
+
+
+
     """
     JS METHODS
     """
+    def unitVector(self, vector):
+        """ Returns the unit vector of the vector.  
+        
+        Based on https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python
+        """
+        
+        return vector / norm(vector)
 
-    def computeDeltaPosition(self, lPow, rPow):
-        pass
+    def angleBetween(self, v1, v2):
+        """ Returns the angle in radians between vectors 'v1' and 'v2'.
+        """
+        # return np.arctan2(norm(np.cross(v1,v2)), np.dot(v1,v2))
+        return np.arctan2(np.cross(v1,v2), np.dot(v1,v2))
+
+    def lineIntersection(self, line1, line2):
+        """
+        
+        Based on https://stackoverflow.com/questions/3252194/numpy-and-line-intersections
+        """
+
+        # s for stacked
+        s = np.vstack([line1[0], line1[1], line2[0], line2[1]])        
+        
+        # h for homogeneous
+        h = np.hstack((s, np.ones((4, 1)))) 
+        
+        # get first line
+        l1 = np.cross(h[0], h[1])           
+        
+        # get second line
+        l2 = np.cross(h[2], h[3])           
+        
+        # point of intersection
+        x, y, z = np.cross(l1, l2)          
+        
+        # lines are parallel
+        if z == 0:                          
+            return None
+
+        return (x/z, y/z)
+
+    def plotWalls(self, walls):
+
+        for wall in walls:
+            plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
+
+        plt.xlim([0, CELLCOLS * 2])
+        plt.xticks(range(0, CELLCOLS * 2 + 1, 2))
+
+        plt.ylim([0, CELLROWS * 2])
+        plt.yticks(range(0, CELLROWS * 2 + 1, 2))
+
+        plt.grid(True)
+        plt.show()
+
+
+    def minDistanceToWall(self, point, wall_points):
+        """ Compute the minimum distance from a point to a wall,
+        defined by two points (line segment).
+
+        Based on https://www.geeksforgeeks.org/minimum-distance-from-a-point-to-the-line-segment-using-vectors/
+        """
+
+        # initialize
+        min_dist = None
+
+        # get wall corners
+        corner0 = wall_points[0]
+        corner1 = wall_points[1]
+
+        # build vectors from wall corners to point
+        wall = np.subtract(corner1, corner0)
+        point_to_corner0 = np.subtract(point, corner0)
+        point_to_corner1 = np.subtract(point, corner1)
+
+        # compute dot products
+        dot_corner0 = np.dot(wall, point_to_corner0)
+        dot_corner1 = np.dot(wall, point_to_corner1)
+
+        # case 1
+        if (dot_corner1 > 0):         
+            # find magnitude
+            min_dist = norm(point_to_corner1)
+        
+        # case 2
+        elif (dot_corner0 < 0):
+            # find magnitude
+            min_dist = norm(point_to_corner0)
+
+        # case 3
+        else:        
+            # find magnitude
+            min_dist = norm(np.cross(wall, point_to_corner1)) / norm(wall)
+
+        return min_dist 
+
+
+    def getWallsCorners(self):
+        """ Compute the corners coordinates (X and Y) of all walls in the map.
+        Also, it accounts for thickness. 
+        """
+
+        walls = []
+        wall_indices = []
+
+        for row in range(CELLROWS * 2 - 1):
+            for col in range(CELLCOLS * 2 - 1):                
+                if self.labMap[row][col] in ['-', '|']:
+                    wall_indices.append((row, col))
+
+
+        for wall in wall_indices:
+
+            row = wall[0]
+            col = wall[1]
+
+            wall_direction = self.labMap[row][col]
+
+            if wall_direction == '|': # vertical wall
+                
+                side_1 = [((col-1)+2-self.wall_thick/2, row), ((col-1)+2-self.wall_thick/2, row+2)]
+                side_2 = [((col-1)+2+self.wall_thick/2, row), ((col-1)+2+self.wall_thick/2, row+2)]
+
+                walls.append(side_1)
+                walls.append(side_2)
+
+            elif wall_direction == '-': # horizontal wall
+
+                side_1 = [(col, (row-1)+2-self.wall_thick/2), (col+2, (row-1)+2-self.wall_thick/2)]
+                side_2 = [(col,(row-1)+2+self.wall_thick/2), (col+2, (row-1)+2+self.wall_thick/2)]
+
+                walls.append(side_1)
+                walls.append(side_2) 
+
+        return walls
+        
+        
+    def computeSensorMeasure(self, point, versor, wall):
+        
+        # compute angle to wall extremities
+        sensor_to_corner0 = np.subtract(wall[0], point)
+        sensor_to_corner1 = np.subtract(wall[1], point)
+
+        angle0 = self.angleBetween(versor, sensor_to_corner0)
+        angle1 = self.angleBetween(versor, sensor_to_corner1)
+
+        # check if inside FOV (divide by two to use only the one part of it)
+        angle0_inside = np.abs(angle0) <= self.ir_fov / 2 
+        angle1_inside = np.abs(angle1) <= self.ir_fov / 2 
+
+        # case 1: both angles inside fov
+        if angle0_inside and angle1_inside:
+
+            self.minDistanceToWall(point, wall)
+            print(1)
+
+        # case 2: only corner 0 is inside
+        elif angle0_inside != angle1_inside and angle0_inside:
+            
+            # rotate versor to the direction of the FOV bounds
+            theta = np.sign(angle0) * self.ir_fov / 2
+            rotation = np.array([[cos(theta), -sin(theta)], [sin(theta), cos(theta)]])
+            fov_versor = np.dot(rotation, versor)
+
+            # line from IR sensor
+            line_ir = [point, np.add(point, fov_versor)]
+            
+            intersection = self.lineIntersection(line_ir, wall)
+            
+            print(angle0, angle1)
+            print(wall)
+            print(intersection)
+
+            print(2)
+            
+            
+            
+            
+            # self.minDistanceToWall([ ,intersection, ], point)
+            
+
+            
+
+        # case 3: only corner 1 is inside
+        elif angle0_inside != angle1_inside and angle1_inside:
+            print(3)    
+
+        # case 4: both angles outside fov
+        else:
+            print(4)
+            pass # do nothing
+
+
+
+
+
+
+
+
+
+
+
+    def computeGroundTruth(self):  
+
+        # iterate over each cell                
+        for row in range(CELLROWS):
+            for col in range(CELLCOLS):
+                
+                # compute coordinates of the center of this cell
+                center_cell = (col + self.cell_size / 2, row + self.cell_size / 2)
+                # print(center_cell)
+
+
+
+
+
+
+
+
+
+
 
 """
 CLASS MAP
@@ -172,8 +421,28 @@ for i in range(1, len(sys.argv),2):
 
 if __name__ == '__main__':
     rob=MyRob(rob_name,pos,[0.0,90.0,-90.0,180.0],host)
+
     if mapc != None:
         rob.setMap(mapc.labMap)
         rob.printMap()
+
+        
+        # TODO remove
+        print()
+        walls = rob.getWallsCorners()
+
+        for wall in walls:
+            rob.computeSensorMeasure([1+0.5, 1], [1, 0], wall)
+
+        print('Done boss')
+
+        rob.plotWalls(walls)
+        
+
+
+
+
+        # rob.computeGroundTruth() 
+        # rob.wallMinDistance([])
     
     rob.run()
