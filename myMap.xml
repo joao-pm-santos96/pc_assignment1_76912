@@ -10,8 +10,8 @@
 		<Row  Pos="6"  Pattern="                          |              "  />
 		<Row  Pos="5"  Pattern="                                         "  />
 		<Row  Pos="4"  Pattern="                          |              "  />
-		<Row  Pos="3"  Pattern="                                         "  />
-		<Row  Pos="2"  Pattern="                          |              "  />
+		<Row  Pos="3"  Pattern="--.--.--.--.--.--.--.--.--.--.--.--.--.--"  />
+		<Row  Pos="2"  Pattern="                          |  |           "  />
 		<Row  Pos="1"  Pattern="                                         "  />
 		<Row  Pos="0"  Pattern="                          |              "  />
 </Lab>

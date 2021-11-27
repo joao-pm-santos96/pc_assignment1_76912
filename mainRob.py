@@ -300,6 +300,8 @@ class MyRob(CRobLinkAngs):
         
         
     def computeSensorMeasure(self, point, versor, wall):
+
+        distance = None
         
         # compute angle to wall extremities
         sensor_to_corner0 = np.subtract(wall[0], point)
@@ -312,54 +314,38 @@ class MyRob(CRobLinkAngs):
         angle0_inside = np.abs(angle0) <= self.ir_fov / 2 
         angle1_inside = np.abs(angle1) <= self.ir_fov / 2 
 
-        # case 1: both angles inside fov
+        # case both angles inside fov
         if angle0_inside and angle1_inside:
 
-            self.minDistanceToWall(point, wall)
+            distance = self.minDistanceToWall(point, wall)
 
-        # case 2: only corner 0 is inside
+        # case wall is so close that both angles outside
+        elif not (angle0_inside or angle1_inside) and (np.sign(angle0) != np.sign(angle1)):
+
+            distance = self.minDistanceToWall(point, wall)
+
+        # case only one corner is inside
         elif angle0_inside != angle1_inside:
             
             # rotate versor to the direction of the FOV bounds
-            theta = np.sign(angle1) * self.ir_fov / 2
+            theta = np.sign(angle0) * self.ir_fov / 2
             fov_versor = self.rotateVector(versor, theta)
-
-
-
-
-
-
-
-
 
             # line from IR sensor
             line_ir = [point, np.add(point, fov_versor)]
             intersection = self.lineIntersection(line_ir, wall)
-            
-            print(angle0, angle1)
-            print(wall)
-            print(intersection)
 
-            print(2)
+            subs_index = [angle0_inside, angle1_inside].index(False)
+            wall_in_fov = wall.copy() 
+            wall_in_fov[subs_index] = intersection
             
-            
-            
-            
-            # self.minDistanceToWall([ ,intersection, ], point)
-            
-
-            
-
-        # case 3: only corner 1 is inside
-        # elif angle0_inside != angle1_inside and angle1_inside:
-        #     print(3)    
-
-        # case 4: both angles outside fov
-        else:
-            print(4)
-            pass # do nothing
+            distance = self.minDistanceToWall(point, wall_in_fov)           
 
 
+
+
+
+        print(f'Distance {distance}')
 
 
 
@@ -452,8 +438,11 @@ if __name__ == '__main__':
         
         # TODO remove
         print()
-        ir_point = [1+0.5, 13]
-        ir_versor = [1, 0]
+        # ir_point = [17+0.5, 1]
+        # ir_versor = [1, 0]
+
+        ir_point = [19, 1+0.5]
+        ir_versor = [0, 1]
 
         walls = rob.getWallsCorners()
 
