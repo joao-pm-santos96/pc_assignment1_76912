@@ -186,8 +186,15 @@ class MyRob(CRobLinkAngs):
 
         return (x/z, y/z)
 
-    def plotWalls(self, walls):
+    def rotateVector(self, vector, angle):
+        """ Rotate a vector
+        """
+        rotation = np.array([[cos(angle), -sin(angle)], [sin(angle), cos(angle)]])
+        return np.dot(rotation, vector)
 
+    def plotMapAndRobot(self, point, versor, walls):
+
+        # walls
         for wall in walls:
             plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
 
@@ -196,6 +203,16 @@ class MyRob(CRobLinkAngs):
 
         plt.ylim([0, CELLROWS * 2])
         plt.yticks(range(0, CELLROWS * 2 + 1, 2))
+
+        # fov
+        fov0 = self.rotateVector(versor, -1 * self.ir_fov / 2)
+        fov0 = np.multiply(fov0, 100)
+
+        fov1 = self.rotateVector(versor, self.ir_fov / 2)
+        fov1 = np.multiply(fov1, 100)
+
+        for end_point in [np.add(point, fov0), np.add(point, fov1)]:
+            plt.plot([point[0], end_point[0]], [point[1], end_point[1]])
 
         plt.grid(True)
         plt.show()
@@ -299,19 +316,24 @@ class MyRob(CRobLinkAngs):
         if angle0_inside and angle1_inside:
 
             self.minDistanceToWall(point, wall)
-            print(1)
 
         # case 2: only corner 0 is inside
-        elif angle0_inside != angle1_inside and angle0_inside:
+        elif angle0_inside != angle1_inside:
             
             # rotate versor to the direction of the FOV bounds
-            theta = np.sign(angle0) * self.ir_fov / 2
-            rotation = np.array([[cos(theta), -sin(theta)], [sin(theta), cos(theta)]])
-            fov_versor = np.dot(rotation, versor)
+            theta = np.sign(angle1) * self.ir_fov / 2
+            fov_versor = self.rotateVector(versor, theta)
+
+
+
+
+
+
+
+
 
             # line from IR sensor
             line_ir = [point, np.add(point, fov_versor)]
-            
             intersection = self.lineIntersection(line_ir, wall)
             
             print(angle0, angle1)
@@ -329,8 +351,8 @@ class MyRob(CRobLinkAngs):
             
 
         # case 3: only corner 1 is inside
-        elif angle0_inside != angle1_inside and angle1_inside:
-            print(3)    
+        # elif angle0_inside != angle1_inside and angle1_inside:
+        #     print(3)    
 
         # case 4: both angles outside fov
         else:
@@ -423,20 +445,24 @@ if __name__ == '__main__':
     rob=MyRob(rob_name,pos,[0.0,90.0,-90.0,180.0],host)
 
     if mapc != None:
+
         rob.setMap(mapc.labMap)
         rob.printMap()
 
         
         # TODO remove
         print()
+        ir_point = [1+0.5, 13]
+        ir_versor = [1, 0]
+
         walls = rob.getWallsCorners()
 
         for wall in walls:
-            rob.computeSensorMeasure([1+0.5, 1], [1, 0], wall)
+            rob.computeSensorMeasure(ir_point, ir_versor, wall)
 
         print('Done boss')
 
-        rob.plotWalls(walls)
+        rob.plotMapAndRobot(ir_point, ir_versor, walls)
         
 
 
