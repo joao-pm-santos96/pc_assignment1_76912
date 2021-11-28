@@ -49,6 +49,7 @@ class MyRob(CRobLinkAngs):
 
         # store the values that should be measured in each cell
         self.ground_truth = None
+        self.right_motion_probabilities = None
         
         # store the probability map
         self.cells_probability = None       
@@ -92,7 +93,8 @@ class MyRob(CRobLinkAngs):
                 print(self.robName + " collided")
 
                 # TODO remove
-                self.plotProbabilitiesMap(cenas, wait=0)
+                for cena in cenas:
+                    self.plotProbabilitiesMap(cena, wait=1)
 
                 quit()  
 
@@ -141,19 +143,12 @@ class MyRob(CRobLinkAngs):
                 last_distance = norm(self.current_position[:2])
 
                 if last_distance != 0:
-                    self.bayesFilterMove(self.current_position[:2])
+                    self.bayesFilterMove()
                     cenas.append(self.cells_probability)
 
-                # self.bayesFilterSense(measures)
+                self.bayesFilterSense(measures)                
 
-                
-
-                print(sum([sum(x) for x in self.cells_probability]))
-
-                
-
-                m.append(self.measures.irSensor)
-                print(f'Cell {cells_moved}: {m[-1]} | {[round(x, 1) for x in self.ground_truth[3][int(2 + cells_moved)]]}')
+                print(f'Cell {cells_moved}: {measures} | {[round(x, 1) for x in self.ground_truth[3][int(3 + cells_moved)]]}')
 
 
 
@@ -431,7 +426,7 @@ class MyRob(CRobLinkAngs):
         sensors = self._getCellSensorsPoses(row, col)
         measures = []
 
-        for dir in range(4):
+        for dir in range(NUM_IR_SENSORS):
 
             distances = []
 
@@ -465,22 +460,20 @@ class MyRob(CRobLinkAngs):
         self.cells_probability = [[probability] * CELLCOLS for i in range(CELLROWS)]
 
         # motion probabilities given the map
-        cenas = []
+        self.right_motion_probabilities = []
+
         for row in range(CELLROWS):
-            cenas.append([0 if (row, col) in self.walls_indices else 1 for col in range(CELLCOLS)])
+            row_probs = []
+            for col in range(CELLCOLS):
+                
+                x = col * self.cell_size
+                y = row * self.cell_size
 
-        print(self.walls_indices)
-        print(cenas)
-        self.plotProbabilitiesMap(cenas, wait=0)
-        exit(0)
+                wall = [(x + self.wall_thick / 2, y), (x + self.wall_thick / 2, y + self.cell_size)]
 
+                row_probs.append(0 if (wall in self.walls or col == 0) else 1)
 
-
-
-
-
-
-
+            self.right_motion_probabilities.append(row_probs)
 
     def computeGroundTruth(self):  
         """ Compute ground truth measures for all sensors and all cells.
@@ -546,30 +539,17 @@ class MyRob(CRobLinkAngs):
 
         maps = []
 
-        for sensor in range(4):
+        for sensor in range(NUM_IR_SENSORS):
             maps.append(self._bayesFilterSensor(measures, sensor))
 
         min_map = np.amin(maps, axis=0)
 
         self.cells_probability = np.divide(min_map, np.sum(min_map))
 
-    def bayesFilterMove(self, motion):
+    def bayesFilterMove(self):
         
-        for row in range(CELLROWS):
-            for col in range(CELLCOLS):
+        self.cells_probability = np.multiply(self.cells_probability, self.right_motion_probabilities)
 
-                prob = 1
-
-                if col == 0:
-                    prob = 0
-
-                if col != 0 and self.labMap[int(row + 1)][int((col - 1)/2)] == '|':
-                    prob = 0
-
-
-
-                self.cells_probability[row][col] *= prob
-        
 
             
                 
@@ -640,15 +620,26 @@ if __name__ == '__main__':
 
         #######
         rob.initProbabilities()
+
+        # (pos, rot) = rob._getCellSensorsPoses(3,3)
+        
+        # dir = 2
+
+        # # print(pos[dir], rot[dir])
+        # rob._getWallsCorners()
+        # print(rob._computeCellMeasures(3,3))
+
+        # # for wall in rob.walls:
+        # #     dist = rob._computeClosestDistanceToWall(pos[dir], rot[dir], wall)
+        # #     print(dist)
+        # exit(0)
+
+
+        # (pos, rot) = rob._getCellSensorsPoses(3,13)
+        
         # rob.computeGroundTruth()
 
-        # row = input('Row')
-        # col = input('Col')
+        # rob.plotMapAndRobot(pos[3], rot[3], rob.walls)
 
-        # print(rob.ground_truth[int(row)][int(col)])
-        # rob.readSensors()
-        # print(rob.measures.irSensor)
-
-        # rob.plotProbabilitiesMap(1)
 
     rob.run()
