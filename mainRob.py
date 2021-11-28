@@ -1,5 +1,7 @@
 
 import sys
+
+from numpy.core.shape_base import block
 from croblink import *
 from math import *
 import xml.etree.ElementTree as ET
@@ -8,7 +10,7 @@ import xml.etree.ElementTree as ET
 JS IMPORTS
 """
 import numpy as np
-from numpy.linalg import norm, inv, det
+from numpy.linalg import norm
 
 #TODO remove
 import matplotlib.pyplot as plt
@@ -20,16 +22,20 @@ CELLCOLS=14
 CLASS MyRob
 """
 class MyRob(CRobLinkAngs):
+
     def __init__(self, rob_name, rob_id, angles, host):
+
         CRobLinkAngs.__init__(self, rob_name, rob_id, angles, host)
 
-        # data
+        # robot/sensors data
         self.ir_fov = pi / 3 # 60 deg
         self.wall_thick = 0.2 # 0.1 each side
         self.cell_size = 2
         self.diameter = 1
+        self.sensor_noise = 0.1
 
-        # walls description
+        # walls corners
+        self.walls_indices = None
         self.walls = None
 
         # positional stuff
@@ -37,23 +43,29 @@ class MyRob(CRobLinkAngs):
         self.last_position = None
         self.last_velocity = None
         
+        # wheels speed
         self.right_speed = 0
         self.left_speed = 0
 
-        # store the expected measurements from each sensor
+        # store the values that should be measured in each cell
         self.ground_truth = None
-        self.cells_probability = None
+        
+        # store the probability map
+        self.cells_probability = None       
 
-    # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
-    # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
     def setMap(self, labMap):
+        # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
+        # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
+        
         self.labMap = labMap
 
     def printMap(self):
+
         for l in reversed(self.labMap):
             print(''.join([str(l) for l in l]))
 
     def run(self):
+
         if self.status != 0:
             print("Connection refused or error")
             quit()
@@ -61,9 +73,16 @@ class MyRob(CRobLinkAngs):
         state = 'stop'
         stopped_state = 'run'
 
+        m = []
+        last_distance = 0
+        cenas = []
+        self.computeGroundTruth()
+
+        print('Ready') # TODO Remove
+
         while True:
+
             self.readSensors()
-            print(state)
             
             if self.measures.endLed:
                 print(self.robName + " exiting")
@@ -71,6 +90,10 @@ class MyRob(CRobLinkAngs):
 
             if self.measures.collision:
                 print(self.robName + " collided")
+
+                # TODO remove
+                self.plotProbabilitiesMap(cenas, wait=0)
+
                 quit()  
 
             # compute traveled distance
@@ -97,7 +120,10 @@ class MyRob(CRobLinkAngs):
                     self.setVisitingLed(False)
                 if self.measures.returningLed==True:
                     state='return'
-                self.driveMotors(0.0,0.0)
+
+                self.left_speed = 0.0
+                self.right_speed = 0.0
+                self.driveMotors(self.left_speed, self.right_speed)
 
             elif state == 'return':
                 if self.measures.visitingLed==True:
@@ -106,9 +132,32 @@ class MyRob(CRobLinkAngs):
                     self.setReturningLed(False)
                 self.wander()
 
-            if norm(self.current_position[:2]) % self.cell_size == 0:
+            # check if traveled enough to be in new cell            
+            (cells_moved, remainder) = divmod(norm(self.current_position[:2]), self.cell_size)
+            in_cell = round(remainder, 1) == 0.0
 
-                print(f'                          {norm(self.current_position[:2]) / self.cell_size}')
+            if in_cell and norm(self.current_position[:2]) != last_distance:
+                measures = self.measures.irSensor
+                last_distance = norm(self.current_position[:2])
+
+                if last_distance != 0:
+                    self.bayesFilterMove(self.current_position[:2])
+                    cenas.append(self.cells_probability)
+
+                # self.bayesFilterSense(measures)
+
+                
+
+                print(sum([sum(x) for x in self.cells_probability]))
+
+                
+
+                m.append(self.measures.irSensor)
+                print(f'Cell {cells_moved}: {m[-1]} | {[round(x, 1) for x in self.ground_truth[3][int(2 + cells_moved)]]}')
+
+
+
+
 
 
     def wander(self):
@@ -215,12 +264,14 @@ class MyRob(CRobLinkAngs):
         plt.grid(True)
         plt.show()
 
-    def plotProbabilitiesMap(self, wait=0.1):
+    def plotProbabilitiesMap(self, values, wait=0.5):
 
-        plt.imshow(self.cells_probability, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
+        plt.imshow(values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
+        # plt.title(str(id))
 
         plt.ion()
-        plt.show()
+        # plt.draw()
+        plt.show(block=False)
         plt.pause(wait)
 
     def _getCellSensorsPoses(self, row, col):
@@ -281,16 +332,16 @@ class MyRob(CRobLinkAngs):
         """
 
         self.walls = []
-        wall_indices = []
+        self.walls_indices = []
 
         # inner walls indices
         for row in range(CELLROWS * self.cell_size - 1):
             for col in range(CELLCOLS * self.cell_size - 1):                
                 if self.labMap[row][col] in ['-', '|']:
-                    wall_indices.append((row, col))
+                    self.walls_indices.append((row, col))
 
         # inner walls corners
-        for wall in wall_indices:
+        for wall in self.walls_indices:
 
             row = wall[0]
             col = wall[1]
@@ -397,19 +448,45 @@ class MyRob(CRobLinkAngs):
 
         return measures
 
+    def _normalDistribution(self, value, mean, variance):
+        """ Compute normal distribution
+        """
+        # TODO can give over 1 ...
+        return (2 * np.pi * variance) ** (-1/2) * np.exp(-1/2 * (value - mean) ** 2 / variance)
+
+
     def initProbabilities(self):
 
+        # get corners of all walls
+        self._getWallsCorners()
+
+        # initial probabilities
         probability = 1 / (CELLCOLS * CELLROWS)
         self.cells_probability = [[probability] * CELLCOLS for i in range(CELLROWS)]
+
+        # motion probabilities given the map
+        cenas = []
+        for row in range(CELLROWS):
+            cenas.append([0 if (row, col) in self.walls_indices else 1 for col in range(CELLCOLS)])
+
+        print(self.walls_indices)
+        print(cenas)
+        self.plotProbabilitiesMap(cenas, wait=0)
+        exit(0)
+
+
+
+
+
+
+
+
 
     def computeGroundTruth(self):  
         """ Compute ground truth measures for all sensors and all cells.
         """
 
         self.ground_truth = []
-
-        # get corners of all walls
-        self._getWallsCorners()
 
         # iterate over each cell                
         for row in range(CELLROWS):
@@ -443,37 +520,63 @@ class MyRob(CRobLinkAngs):
         return (x, y, theta)
 
 
-    # def kf_predict(self, X, P, A, Q, B, U):
-    #     X = np.dot(A, X) + np.dot(B, U)
-    #     P = np.dot(A, np.dot(P, A.T)) + Q
-    #     return(X,P) 
 
-    # def kf_update(self, X, P, Y, H, R):
-    #     IM = np.dot(H, X)
-    #     IS = R + np.dot(H, np.dot(P, H.T))
-    #     K = np.dot(P, np.dot(H.T, inv(IS)))
-    #     X = X + np.dot(K, (Y-IM))
-    #     P = P - np.dot(K, np.dot(IS, K.T))
-    #     LH = self._gauss_pdf(Y, IM, IS)
-    #     return (X,P,K,IM,IS,LH)
 
-    # def _gauss_pdf(self, X, M, S):
-    #     if M.shape()[1] == 1:
-    #         DX = X - np.tile(M, X.shape()[1])
-    #         E = 0.5 * sum(DX * (np.dot(inv(S), DX)), axis=0)
-    #         E = E + 0.5 * M.shape()[0] * log(2 * pi) + 0.5 * log(det(S))
-    #         P = exp(-E)
-    #     elif X.shape()[1] == 1:
-    #         DX = np.tile(X, M.shape()[1])- M
-    #         E = 0.5 * sum(DX * (np.dot(inv(S), DX)), axis=0)
-    #         E = E + 0.5 * M.shape()[0] * log(2 * pi) + 0.5 * log(det(S))
-    #         P = exp(-E)
-    #     else:
-    #         DX = X-M
-    #         E = 0.5 * np.dot(DX.T, np.dot(inv(S), DX))
-    #         E = E + 0.5 * M.shape()[0] * log(2 * pi) + 0.5 * log(det(S))
-    #         P = exp(-E)
-    #     return (P[0],E[0]) 
+
+
+
+    def _bayesFilterSensor(self, measures, sensor):
+
+        probabilities_map = []
+
+        for row in range(CELLROWS):
+
+            probabilities_row = []
+
+            for col in range(CELLCOLS):
+                expected = self.ground_truth[row][col][sensor]
+                probabilities_row.append(self._normalDistribution(measures[sensor], expected, self.sensor_noise) * self.cells_probability[row][col])
+
+            probabilities_map.append(probabilities_row)
+
+        # normalize
+        return np.divide(probabilities_map, np.sum(probabilities_map))
+
+    def bayesFilterSense(self, measures):
+
+        maps = []
+
+        for sensor in range(4):
+            maps.append(self._bayesFilterSensor(measures, sensor))
+
+        min_map = np.amin(maps, axis=0)
+
+        self.cells_probability = np.divide(min_map, np.sum(min_map))
+
+    def bayesFilterMove(self, motion):
+        
+        for row in range(CELLROWS):
+            for col in range(CELLCOLS):
+
+                prob = 1
+
+                if col == 0:
+                    prob = 0
+
+                if col != 0 and self.labMap[int(row + 1)][int((col - 1)/2)] == '|':
+                    prob = 0
+
+
+
+                self.cells_probability[row][col] *= prob
+        
+
+            
+                
+
+
+
+
 
 """
 CLASS MAP
@@ -548,4 +651,4 @@ if __name__ == '__main__':
 
         # rob.plotProbabilitiesMap(1)
 
-    # rob.run()
+    rob.run()
