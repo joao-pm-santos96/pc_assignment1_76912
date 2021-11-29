@@ -1,7 +1,4 @@
-
 import sys
-
-from numpy.core.shape_base import block
 from croblink import *
 from math import *
 import xml.etree.ElementTree as ET
@@ -74,9 +71,9 @@ class MyRob(CRobLinkAngs):
         state = 'stop'
         stopped_state = 'run'
 
-        m = []
-        last_distance = 0
+
         cenas = []
+        current_measures = None
         self.computeGroundTruth()
 
         print('Ready') # TODO Remove
@@ -93,14 +90,43 @@ class MyRob(CRobLinkAngs):
                 print(self.robName + " collided")
 
                 # TODO remove
-                for cena in cenas:
-                    self.plotProbabilitiesMap(cena, wait=1)
+                for id, cena in enumerate(cenas):
+
+                    print(f'I think I am on {np.unravel_index(cena.argmax(), cena.shape)}')
+                    self.plotProbabilitiesMap(cena, wait=1, title=str(id))
+
+                
+
+                self.finish()
 
                 quit()  
 
             # compute traveled distance
             self.current_position = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
               
+            # check if traveled enough to be in new cell            
+            (cells_moved, remainder) = divmod(norm(self.current_position[:2]), self.cell_size)
+            in_cell = round(remainder, 1) == 0.0
+
+
+            # TODO check order
+            # sense
+            if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
+                current_measures = self.measures.irSensor
+
+                self.bayesFilterSense(current_measures)   
+
+                cell = (4,3)
+                data = [round(x, 1) for x in self.ground_truth[cell[0]][int(cell[1] + cells_moved)]]
+                print(f'Cell {cells_moved}: {current_measures} | {data} | {current_measures == data}')
+
+
+
+            # move
+            if in_cell and cells_moved != 0:
+                
+                self.bayesFilterMove()
+                cenas.append(self.cells_probability)
             # behaviors
             if state == 'stop' and self.measures.start:
                 state = stopped_state
@@ -134,21 +160,7 @@ class MyRob(CRobLinkAngs):
                     self.setReturningLed(False)
                 self.wander()
 
-            # check if traveled enough to be in new cell            
-            (cells_moved, remainder) = divmod(norm(self.current_position[:2]), self.cell_size)
-            in_cell = round(remainder, 1) == 0.0
-
-            if in_cell and norm(self.current_position[:2]) != last_distance:
-                measures = self.measures.irSensor
-                last_distance = norm(self.current_position[:2])
-
-                if last_distance != 0:
-                    self.bayesFilterMove()
-                    cenas.append(self.cells_probability)
-
-                self.bayesFilterSense(measures)                
-
-                print(f'Cell {cells_moved}: {measures} | {[round(x, 1) for x in self.ground_truth[3][int(3 + cells_moved)]]}')
+            
 
 
 
@@ -259,10 +271,11 @@ class MyRob(CRobLinkAngs):
         plt.grid(True)
         plt.show()
 
-    def plotProbabilitiesMap(self, values, wait=0.5):
+    def plotProbabilitiesMap(self, values, wait=0.5, title=''):
 
         plt.imshow(values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
-        # plt.title(str(id))
+
+        plt.title(title)
 
         plt.ion()
         # plt.draw()
@@ -389,13 +402,17 @@ class MyRob(CRobLinkAngs):
         angle0_inside = np.abs(angle0) <= self.ir_fov / 2 
         angle1_inside = np.abs(angle1) <= self.ir_fov / 2 
 
+        # check if they are in front of the sensor
+        angle0_front = np.abs(angle0) <= np.pi / 2 
+        angle1_front = np.abs(angle1) <= np.pi / 2 
+
         # case both angles inside fov
         if angle0_inside and angle1_inside:
             
             distance = self._minDistanceToWall(point, wall)
 
         # case wall is so close that both angles outside
-        elif not (angle0_inside or angle1_inside) and (np.sign(angle0) != np.sign(angle1)):
+        elif not (angle0_inside or angle1_inside) and (np.sign(angle0) != np.sign(angle1)) and (angle0_front and angle1_front):
             
             distance = self._minDistanceToWall(point, wall)
 
@@ -426,12 +443,12 @@ class MyRob(CRobLinkAngs):
         sensors = self._getCellSensorsPoses(row, col)
         measures = []
 
-        for dir in range(NUM_IR_SENSORS):
+        for ir_point, ir_versor in zip(sensors[0], sensors[1]):
 
             distances = []
 
-            ir_point = sensors[0][dir]
-            ir_versor = sensors[1][dir]
+            # ir_point = sensors[0][dir]
+            # ir_versor = sensors[1][dir]
 
             for wall in self.walls:
 
@@ -447,7 +464,7 @@ class MyRob(CRobLinkAngs):
         """ Compute normal distribution
         """
         # TODO can give over 1 ...
-        return (2 * np.pi * variance) ** (-1/2) * np.exp(-1/2 * (value - mean) ** 2 / variance)
+        return ((2 * np.pi * variance) ** (-1/2)) * np.exp(-1/2 * ((value - mean) ** 2) / variance)
 
 
     def initProbabilities(self):
@@ -475,6 +492,9 @@ class MyRob(CRobLinkAngs):
 
             self.right_motion_probabilities.append(row_probs)
 
+        # normalize # TODO should I?
+        self.right_motion_probabilities = np.divide(self.right_motion_probabilities, np.sum(self.right_motion_probabilities))
+
     def computeGroundTruth(self):  
         """ Compute ground truth measures for all sensors and all cells.
         """
@@ -484,6 +504,7 @@ class MyRob(CRobLinkAngs):
         # iterate over each cell                
         for row in range(CELLROWS):
             self.ground_truth.append([self._computeCellMeasures(row, col) for col in range(CELLCOLS)])
+
 
     def computeTraveledDistance(self, in_left, in_right):
         """ Compute the traveled distance since the motion started.
@@ -512,6 +533,9 @@ class MyRob(CRobLinkAngs):
 
         return (x, y, theta)
 
+    def finish(self):
+        pass
+        # TODO
 
 
 
@@ -602,7 +626,7 @@ for i in range(1, len(sys.argv),2):
         host = sys.argv[i + 1]
     elif (sys.argv[i] == "--pos" or sys.argv[i] == "-p") and i != len(sys.argv) - 1:
         pos = int(sys.argv[i + 1])
-    elif (sys.argv[i] == "--robname" or sys.argv[i] == "-p") and i != len(sys.argv) - 1:
+    elif (sys.argv[i] == "--robname" or sys.argv[i] == "-r") and i != len(sys.argv) - 1:
         rob_name = sys.argv[i + 1]
     elif (sys.argv[i] == "--map" or sys.argv[i] == "-m") and i != len(sys.argv) - 1:
         mapc = Map(sys.argv[i + 1])
