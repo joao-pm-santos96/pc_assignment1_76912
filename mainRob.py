@@ -27,9 +27,9 @@ class MyRob(CRobLinkAngs):
         # robot/sensors data
         self.ir_fov = pi / 3 # 60 deg
         self.wall_thick = 0.2 # 0.1 each side
-        self.cell_size = 2
+        self.cell_size = 2 # in diameters
         self.diameter = 1
-        self.sensor_noise = 0.1
+        self.sensor_noise = 0.1 
 
         # walls corners
         self.walls_indices = None
@@ -70,10 +70,7 @@ class MyRob(CRobLinkAngs):
         state = 'stop'
         stopped_state = 'run'
 
-
-        cenas = []
         current_measures = None
-        last_position = None
         self.computeGroundTruth()
 
         print('Ready') # TODO Remove
@@ -87,16 +84,7 @@ class MyRob(CRobLinkAngs):
                 quit()
 
             if self.measures.collision:
-                print(self.robName + " collided")
-
-                # TODO remove
-                for id, cena in enumerate(cenas):
-
-                    # print(f'I think I am on {np.unravel_index(cena.argmax(), cena.shape)}')
-                    print(f'Total prob = {np.sum(self.cells_probability)}')
-                    self.plotProbabilitiesMap(cena, wait=1, title=str(id))
-
-                
+                print(self.robName + " collided")     
 
                 self.finish()
 
@@ -133,7 +121,7 @@ class MyRob(CRobLinkAngs):
             if motion is not None:
                 print(motion)
                 self.bayesFilterMove(motion)
-                cenas.append(self.cells_probability)           
+                          
 
             
             # sensing
@@ -490,7 +478,9 @@ class MyRob(CRobLinkAngs):
 
         # initial probabilities
         probability = 1 / (CELLCOLS * CELLROWS)
-        self.cells_probability = [[probability] * CELLCOLS for i in range(CELLROWS)]
+
+        self.cells_probability = []
+        self.cells_probability.append([[probability] * CELLCOLS for i in range(CELLROWS)])
 
     def computeGroundTruth(self):  
         """ Compute ground truth measures for all sensors and all cells.
@@ -534,10 +524,16 @@ class MyRob(CRobLinkAngs):
         return (x, y, theta)
 
     def finish(self):
-        pass
-        # TODO
 
-
+        # TODO remove
+        for id, update in enumerate(self.cells_probability):
+            print(f'Total prob = {np.sum(self.cells_probability[-1])}')
+            self.plotProbabilitiesMap(update, wait=1, title=str(id))
+        
+        with open('localization.out', 'w') as outfile:    
+            for update in self.cells_probability:
+                np.savetxt(outfile, np.flip(update, axis=0), fmt='%-5.3f')
+                outfile.write('\n')
 
 
 
@@ -546,23 +542,26 @@ class MyRob(CRobLinkAngs):
 
     def bayesFilterSense(self, measures):
 
+        map = []
+        current_belief = self.cells_probability.pop()
+
         for row in range(CELLROWS):
+
+            row_probabilities = []
             for col in range(CELLCOLS):
                 
                 product = np.prod([self._normalDistribution(self.ground_truth[row][col][x], measures[x], self.sensor_noise) for x in range(NUM_IR_SENSORS)])
 
-                self.cells_probability[row][col] = product * self.cells_probability[row][col]
+                bel = product * current_belief[row][col]
+                row_probabilities.append(bel)
+
+            map.append(row_probabilities)
 
         # normalize
-        self.cells_probability = np.divide(self.cells_probability, np.sum(self.cells_probability))
-
-
-
+        self.cells_probability.append(np.divide(map, np.sum(map)))
 
 
     def bayesFilterMove(self, motion):
-
-        # TODO account for walls?
 
         map = []
         for row in range(CELLROWS):
@@ -575,16 +574,15 @@ class MyRob(CRobLinkAngs):
                 p_next_cell = int(not p_same_cell)
 
                 # get adjacent cells probabilities
-                prev_cell_prob = self.cells_probability[row][col - 1] if col > 0 else 0
-                same_cell_prob = self.cells_probability[row][col]
+                prev_cell_prob = self.cells_probability[-1][row][col - 1] if col > 0 else 0
+                same_cell_prob = self.cells_probability[-1][row][col]
 
                 bel = p_next_cell * prev_cell_prob + p_same_cell * same_cell_prob
-
                 row_probabilities.append(bel)
 
             map.append(row_probabilities)
 
-        self.cells_probability = map
+        self.cells_probability.append(map)
 
 
 
