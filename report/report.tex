@@ -5,6 +5,8 @@
 \documentclass[runningheads]{llncs}
 %
 \usepackage{graphicx}
+\usepackage{placeins}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
 \usepackage[acronym]{glossaries}
 
 \newacronym[]{ir}{IR}{Infra Red}
@@ -30,7 +32,7 @@
 \author{João Santos, 76912\inst{1}\orcidID{0000-0003-0393-6456
 }}
 %
-\authorrunning{F. Author et al.}
+\authorrunning{J. Santos}
 % First names are abbreviated in the running head.
 % If there are more than two authors, 'et al.' is used.
 %
@@ -46,6 +48,8 @@ The abstract should briefly summarize the contents of the paper in
 \end{abstract}
 %
 %
+% TODO
+% - agent or robot?
 %
 \section{Introduction}
 \label{sec:introduction}
@@ -71,22 +75,104 @@ A set of assumptions have been made in order to simplify the implementation. Thi
     \item execution ends when the robot hits a wall
     \item motion noise does not exist 
     \item sensor noise is gaussian with mean 0 and variance 0.1
-    \item robot motion is deterministic
-    \item robot only moves from left to right
+    \item the robot motion is deterministic 
+    \item the robot only moves from left to right
     \item the \Gls{ir} sensors detect the closest obstacle measured in the normal direction
     \item the \Gls{ir} sensors have a symmetric \gls{fov} of 60 degrees
 \end{itemize}
 
+\subsection{Bayes' Filter}
+\label{subsec:bayes_filter}
+
+Given that the map is know to the agent and that the state space is finite we can, in a very direct way, implement the Bayes' filter to, iteratively, compute the the agent localization, or more precisely, to compute the probability of the agent being on any given cell.
+
+Algorithm \ref{alg:bayes_filter} shows the general implementation of the Bayes' filter, as stated on \cite{thrun2005probabilistic}. In it, $bel(x_t)$ represents the belief at time $t$, $u_t$ and $z_t$ are, respectively, the controls inputted and the measurements taken also at time $t$ and $\eta$ is a normalization factor.
+
+\begin{algorithm}[!ht]
+    \DontPrintSemicolon
+    \KwIn{$bel(x_{t-1}), u_t, z_t$}
+    \KwOut{$bel(x_t)$}
+
+    \ForEach{$x_t$}{
+        $\overline{bel}(x_t) = \int p(x_t \vert u_t, x_{t-1}) bel(x_{t-1}) dx$
+        
+        $bel(x_t) = \eta p(z_t \vert x_t) \overline{bel}(x_t)$
+    }
+
+\caption{Bayes' filter general algorithm.}
+\label{alg:bayes_filter}
+\end{algorithm}
+\FloatBarrier
+
+Note that for updating the belief at any given instant, only the prior estimate is need, which comes from the Markov assumption.
+
+\subsubsection{Motion Update}
+
+On the scope of this assignment, since the agent is on a finite state space (it either moves or not) and can only move right (motion model) we can say that
+%
+\begin{equation*} 
+    \label{eq1}
+    \begin{split}
+        \overline{bel}(x_t) &= \int p(x_t \vert u_t, x_{t-1}) bel(x_{t-1}) dx \\
+        & = \sum_{x} p(x_t \vert u_1, x) bel(x) \\
+        & = p(x_t \vert u_t, x_{t-1}) bel(x_{t-1}) + p(x_t \vert u_1, x_t) bel(x_t)
+    \end{split}
+\end{equation*}
+%
+where $p(x_t \vert u_t, x_{t-1})$ and $p(x_t \vert u_1, x_t)$ denote, respectively, the probabilities of the agent has moved right and has stayed stationary, given the control vector $u_t$.
+
+Carried for this assignment, it simply becomes that if the agent has stayed stationary ($u_t = [0, 0]$) then $p(x_t \vert u_t, x_{t-1}) = 0$ and $p(x_t \vert u_1, x_t) = 1$, and vice versa if the agent has moved ($u_t = [1, 0]$).
+
+\subsubsection{Measuremnet Integration}
+
+It is in this step were the data gathered from all sensors is fused. Given that any given measure from each of the sensors follows the $\sim\mathcal{N}(true\_value, 0.1)$ model, we can compute $bel(x_t) = \eta p(z_t \vert x_t) \overline{bel}(x_t)$ from algorithm \ref{alg:bayes_filter} with algorithm \ref{alg:bayes_sense}, where $gt(x)$ represents the ground truth values (measurements expected to be gathered in each cell) for a given sensor in cell $x$. This ground truth was computed a priori since the map is known to the agent.
+
+\begin{algorithm}[!ht]
+    \DontPrintSemicolon
+    \KwIn{$bel(x_{t-1}), z_t, gt$}
+    \KwOut{$bel(x_t)$}
+
+    \ForEach{$x_t$}{
+        $product \gets 1$ 
+
+        $\eta \gets 0$
+
+        \ForEach{sensor}{
+            $ product = product \times \mathcal{N}(gt(x) - z_t, 0.1) $ 
+        }
+
+        $\overline{bel}(x_t) = product \times bel(x_{t-1})$
+
+        $\eta = \eta + \overline{bel}(x_t)$
+    }
+
+    \ForEach{$x_t$}{
+        $bel(x_{t}) = \eta^{-1} \overline{bel}(x_t)$
+    }
+
+\caption{Measurement integration algorithm.}
+\label{alg:bayes_sense}
+\end{algorithm}
+\FloatBarrier
+
+
+
 \section{Implementation}
 \label{sec:implementation}
 
-
-Sensores a 90 deg
-
+As stated on section \ref{subsec:assumptions}, the robot only moves in a straight line, from left to right. This poses several advantages, the first of which is that the walls are always perpendicular or parallel to the robot's motion direction. To take advantage of this, the author choose to set the robot's four \gls{ir} distance sensors perpendicular to the cell's border, i. e., to 0, 90, -90 and 180 degrees measured from the robot's travelling direction.
 
 
-\subsection{Extra Tools}
-\label{subsec:extra_tools}
+
+
+
+
+
+
+
+
+\subsection{Debug Tools}
+\label{subsec:debug_tools}
 
 
 
@@ -205,28 +291,29 @@ and a homepage~\cite{ref_url1}. Multiple citations are grouped
 % BibTeX users should specify bibliography style 'splncs04'.
 % References will then be sorted and formatted in the correct style.
 %
-% \bibliographystyle{splncs04}
-% \bibliography{mybibliography}
+\bibliographystyle{splncs04}
+\bibliography{bib}
 %
-\begin{thebibliography}{8}
-\bibitem{ref_article1}
-Author, F.: Article title. Journal \textbf{2}(5), 99--110 (2016)
+% \begin{thebibliography}{8}
+% % \bibitem{ref_article1}
+% % Author, F.: Article title. Journal \textbf{2}(5), 99--110 (2016)
 
-\bibitem{ref_lncs1}
-Author, F., Author, S.: Title of a proceedings paper. In: Editor,
-F., Editor, S. (eds.) CONFERENCE 2016, LNCS, vol. 9999, pp. 1--13.
-Springer, Heidelberg (2016). \doi{10.10007/1234567890}
+% % \bibitem{ref_lncs1}
+% % Author, F., Author, S.: Title of a proceedings paper. In: Editor,
+% % F., Editor, S. (eds.) CONFERENCE 2016, LNCS, vol. 9999, pp. 1--13.
+% % Springer, Heidelberg (2016). \doi{10.10007/1234567890}
 
-\bibitem{ref_book1}
-Author, F., Author, S., Author, T.: Book title. 2nd edn. Publisher,
-Location (1999)
+% % \bibitem{ref_book1}
+% % Author, F., Author, S., Author, T.: Book title. 2nd edn. Publisher,
+% % Location (1999)
 
-\bibitem{ref_proc1}
-Author, A.-B.: Contribution title. In: 9th International Proceedings
-on Proceedings, pp. 1--2. Publisher, Location (2010)
+% % \bibitem{ref_proc1}
+% % Author, A.-B.: Contribution title. In: 9th International Proceedings
+% % on Proceedings, pp. 1--2. Publisher, Location (2010)
 
-\bibitem{ref_url1}
-LNCS Homepage, \url{http://www.springer.com/lncs}. Last accessed 4
-Oct 2017
-\end{thebibliography}
+% % \bibitem{ref_url1}
+% % LNCS Homepage, \url{http://www.springer.com/lncs}. Last accessed 4
+% % Oct 2017
+
+% \end{thebibliography}
 \end{document}
