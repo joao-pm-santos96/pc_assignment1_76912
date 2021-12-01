@@ -48,9 +48,9 @@ class MyRob(CRobLinkAngs):
         # store the values that should be measured in each cell
         self.ground_truth = None
 
-        # self.thread = None
-        # self.measures = []
-        # self.motions = []
+        self.thread = None
+        self.my_measures = []
+        self.motions = []
         
         # store the probability map
         self.cells_probability = None       
@@ -76,9 +76,10 @@ class MyRob(CRobLinkAngs):
         stopped_state = 'run'
 
         current_measures = None
-        self.current_position = [0]*3
-        last_cell = -1
-        self.computeGroundTruth()
+        # self.current_position = [0]*3
+        # self.computeGroundTruth()
+        self.thread = threading.Thread(target=self.computeGroundTruth)
+        self.thread.start()
 
         print('Ready') # TODO Remove
 
@@ -114,12 +115,14 @@ class MyRob(CRobLinkAngs):
             motion = [0,0] if (in_cell and cells_moved == 0 and current_measures is None) else [1,0] if (in_cell and cells_moved != 0) else None
 
             if motion is not None:
-                self.bayesFilterMove(motion)
+                # self.bayesFilterMove(motion)
+                self.motions.append(motion)
             
             # sensing
             if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
                 current_measures = self.measures.irSensor
-                self.bayesFilterSense(current_measures)
+                # self.bayesFilterSense(current_measures)
+                self.my_measures.append(current_measures)
 
 
 
@@ -517,9 +520,16 @@ class MyRob(CRobLinkAngs):
 
     def finish(self):
 
+        print('Computing...')
+        self.thread.join()
+
+        # compute probabilities
+        for motion, measure in zip(self.motions, self.my_measures):
+            self.bayesFilterMove(motion)
+            self.bayesFilterSense(measure)
+
         # TODO remove
         for id, update in enumerate(self.cells_probability):
-            print(f'Total prob = {np.sum(self.cells_probability[-1])}')
             self.plotProbabilitiesMap(update, wait=1, title=str(id))
         
         with open('localization.out', 'w') as outfile:    
