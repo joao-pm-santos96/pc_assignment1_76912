@@ -6,11 +6,11 @@ import xml.etree.ElementTree as ET
 """
 JS IMPORTS
 """
+import threading
 import numpy as np
 from numpy.linalg import norm
 
 #TODO remove
-import threading
 import matplotlib.pyplot as plt
 
 CELLROWS=7
@@ -49,8 +49,8 @@ class MyRob(CRobLinkAngs):
         self.ground_truth = None
 
         self.thread = None
-        self.my_measures = []
-        self.motions = []
+        self.robot_measures = []
+        self.robot_motions = []
         
         # store the probability map
         self.cells_probability = None       
@@ -76,8 +76,6 @@ class MyRob(CRobLinkAngs):
         stopped_state = 'run'
 
         current_measures = None
-        # self.current_position = [0]*3
-        # self.computeGroundTruth()
         self.thread = threading.Thread(target=self.computeGroundTruth)
         self.thread.start()
 
@@ -92,10 +90,8 @@ class MyRob(CRobLinkAngs):
                 quit()
 
             if self.measures.collision:
-                print(self.robName + " collided")     
-
+                print(self.robName + " collided")   
                 self.finish()
-
                 quit()  
 
 
@@ -106,9 +102,6 @@ class MyRob(CRobLinkAngs):
             (cells_moved, remainder) = divmod(norm(self.current_position[:2]), self.cell_size)
             in_cell = round(remainder, 1) == 0.0
 
-
-
-
             # BAYES FILTER        
 
             # motion
@@ -116,17 +109,13 @@ class MyRob(CRobLinkAngs):
 
             if motion is not None:
                 # self.bayesFilterMove(motion)
-                self.motions.append(motion)
+                self.robot_motions.append(motion)
             
             # sensing
             if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
                 current_measures = self.measures.irSensor
                 # self.bayesFilterSense(current_measures)
-                self.my_measures.append(current_measures)
-
-
-
-
+                self.robot_measures.append(current_measures)
 
             # behaviors
             if state == 'stop' and self.measures.start:
@@ -159,12 +148,7 @@ class MyRob(CRobLinkAngs):
                     self.setVisitingLed(False)
                 if self.measures.returningLed==True:
                     self.setReturningLed(False)
-                self.wander()         
-
-
-
-
-
+                self.wander()        
 
     def wander(self):
         # center_id = 0
@@ -246,6 +230,9 @@ class MyRob(CRobLinkAngs):
         return np.dot(rotation, vector)
 
     def plotMapAndRobot(self, point, versor, walls):
+        """ Helper method to plot all the walls and the FOV of a 
+        given sensor.
+        """
 
         # walls
         for wall in walls:
@@ -271,6 +258,8 @@ class MyRob(CRobLinkAngs):
         plt.show()
 
     def plotProbabilitiesMap(self, values, wait=0.5, title='', flip=True):
+        """ Helper method to display a probability maps a gray scale matrix.
+        """
 
         plt.imshow(np.flip(values, axis=0) if flip else values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
 
@@ -464,13 +453,15 @@ class MyRob(CRobLinkAngs):
         return measures
 
     def _normalDistribution(self, value, mean, variance):
-        """ Compute normal distribution
+        """ Compute normal distribution.
         """
         
         return ((2 * np.pi * variance) ** (-1/2)) * np.exp(-1/2 * ((value - mean) ** 2) / variance)
 
 
-    def initProbabilities(self):       
+    def initProbabilities(self):    
+        """ Initialize the probabilities map.
+        """   
 
         # initial probabilities
         probability = 1 / (CELLCOLS * CELLROWS)
@@ -519,12 +510,14 @@ class MyRob(CRobLinkAngs):
         return (x, y, theta)
 
     def finish(self):
+        """ Compute the probability map at each step and save it to a file
+        """
 
         print('Computing...')
         self.thread.join()
 
         # compute probabilities
-        for motion, measure in zip(self.motions, self.my_measures):
+        for motion, measure in zip(self.robot_motions, self.robot_measures):
             self.bayesFilterMove(motion)
             self.bayesFilterSense(measure)
 
@@ -538,6 +531,8 @@ class MyRob(CRobLinkAngs):
                 outfile.write('\n')
 
     def bayesFilterSense(self, measures):
+        """ Sense portion of the Bayes filter.
+        """
 
         map = []
         current_belief = self.cells_probability.pop()
@@ -559,6 +554,8 @@ class MyRob(CRobLinkAngs):
 
 
     def bayesFilterMove(self, motion):
+        """ Move portion of the Bayes filter.
+        """
 
         map = []
         for row in range(CELLROWS):
@@ -580,16 +577,6 @@ class MyRob(CRobLinkAngs):
             map.append(row_probabilities)
 
         self.cells_probability.append(map)
-
-
-
-
-            
-                
-
-
-
-
 
 """
 CLASS MAP
@@ -620,7 +607,6 @@ class Map():
                            None
                
            i=i+1
-
 
 """
 MAIN
@@ -655,6 +641,5 @@ if __name__ == '__main__':
         JS 
         """
         rob.initProbabilities()
-
 
     rob.run()
