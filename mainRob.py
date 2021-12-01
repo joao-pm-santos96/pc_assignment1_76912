@@ -142,67 +142,6 @@ class MyRob(CRobLinkAngs):
                 print(current_measures)
                 self.bayesFilterSense(current_measures)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            # TODO check order
-
-
-
-
-
-
-
-
-
-
-
-
-
-            # move
-            # if in_cell and cells_moved != 0:    
-            # if in_cell:# and cells_moved == 0:
-                
-            #     motion = np.divide(self.current_position[:2], self.cell_size)
-            #     print(motion)
-            #     self.bayesFilterMove(motion)
-            #     cenas.append(self.cells_probability)
-
-
-
-            # # sense
-            # if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
-            #     current_measures = self.measures.irSensor
-
-            #     self.bayesFilterSense(current_measures)   
-            #     # cenas.append(self.cells_probability)
-
-            #     cell = (3,3)
-            #     data = [round(x, 1) for x in self.ground_truth[cell[0]][int(cell[1] + cells_moved)]]
-            #     print(f'Cell {cells_moved}: {current_measures} | {data} | {current_measures == data}')
-
-
-
             
 
 
@@ -352,16 +291,18 @@ class MyRob(CRobLinkAngs):
         plt.grid(True)
         plt.show()
 
-    def plotProbabilitiesMap(self, values, wait=0.5, title=''):
+    def plotProbabilitiesMap(self, values, wait=0.5, title='', flip=True):
 
-        plt.imshow(values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
+        plt.imshow(np.flip(values, axis=0) if flip else values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
 
         plt.title(title)
 
-        plt.ion()
-        # plt.draw()
-        plt.show(block=False)
-        plt.pause(wait)
+        if wait == 0.0:
+            plt.show(block=True)
+        else:
+            plt.ion()
+            plt.show(block=False)
+            plt.pause(wait)
 
     def _getCellSensorsPoses(self, row, col):
         """ Computes all the sensor poses for a given cell
@@ -541,41 +482,22 @@ class MyRob(CRobLinkAngs):
     def _normalDistribution(self, value, mean, variance):
         """ Compute normal distribution
         """
-        # TODO can give over 1 ...
+        
         return ((2 * np.pi * variance) ** (-1/2)) * np.exp(-1/2 * ((value - mean) ** 2) / variance)
 
 
-    def initProbabilities(self):
-
-        # get corners of all walls
-        self._getWallsCorners()
+    def initProbabilities(self):       
 
         # initial probabilities
         probability = 1 / (CELLCOLS * CELLROWS)
         self.cells_probability = [[probability] * CELLCOLS for i in range(CELLROWS)]
 
-        # # motion probabilities given the map
-        # self.right_motion_probabilities = []
-
-        # for row in range(CELLROWS):
-        #     row_probs = []
-        #     for col in range(CELLCOLS):
-                
-        #         x = col * self.cell_size
-        #         y = row * self.cell_size
-
-        #         wall = [(x + self.wall_thick / 2, y), (x + self.wall_thick / 2, y + self.cell_size)]
-
-        #         row_probs.append(0 if (wall in self.walls or col == 0) else 1)
-
-        #     self.right_motion_probabilities.append(row_probs)
-
-        # # normalize # TODO should I?
-        # self.right_motion_probabilities = np.divide(self.right_motion_probabilities, np.sum(self.right_motion_probabilities))
-
     def computeGroundTruth(self):  
         """ Compute ground truth measures for all sensors and all cells.
         """
+
+        # get corners of all walls
+        self._getWallsCorners()
 
         self.ground_truth = []
 
@@ -620,35 +542,6 @@ class MyRob(CRobLinkAngs):
 
 
 
-    # def _bayesFilterSensor(self, measures, sensor):
-
-    #     probabilities_map = []
-
-    #     for row in range(CELLROWS):
-
-    #         probabilities_row = []
-
-    #         for col in range(CELLCOLS):
-    #             expected = self.ground_truth[row][col][sensor]
-    #             probabilities_row.append(self._normalDistribution(measures[sensor], expected, self.sensor_noise) * self.cells_probability[row][col])
-
-    #         probabilities_map.append(probabilities_row)
-
-    #     # normalize
-    #     return np.divide(probabilities_map, np.sum(probabilities_map))
-
-    # def bayesFilterSense2(self, measures):
-
-    #     maps = []
-
-    #     for sensor in range(NUM_IR_SENSORS):
-    #         maps.append(self._bayesFilterSensor(measures, sensor))
-
-    #     min_map = np.amin(maps, axis=0)
-
-    #     self.cells_probability = np.divide(min_map, np.sum(min_map))
-
-
 
 
     def bayesFilterSense(self, measures):
@@ -665,11 +558,6 @@ class MyRob(CRobLinkAngs):
 
 
 
-
-
-    # def bayesFilterMove(self):
-        
-    #     self.cells_probability = np.multiply(self.cells_probability, self.right_motion_probabilities)
 
 
     def bayesFilterMove(self, motion):
