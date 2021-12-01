@@ -10,6 +10,7 @@ import numpy as np
 from numpy.linalg import norm
 
 #TODO remove
+import threading
 import matplotlib.pyplot as plt
 
 CELLROWS=7
@@ -46,6 +47,10 @@ class MyRob(CRobLinkAngs):
 
         # store the values that should be measured in each cell
         self.ground_truth = None
+
+        # self.thread = None
+        # self.measures = []
+        # self.motions = []
         
         # store the probability map
         self.cells_probability = None       
@@ -71,6 +76,8 @@ class MyRob(CRobLinkAngs):
         stopped_state = 'run'
 
         current_measures = None
+        self.current_position = [0]*3
+        last_cell = -1
         self.computeGroundTruth()
 
         print('Ready') # TODO Remove
@@ -91,21 +98,8 @@ class MyRob(CRobLinkAngs):
                 quit()  
 
 
-
-
-
-
-
-
-
-
-
-
-
-
             # compute traveled distance
             self.current_position = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
-
               
             # check if traveled enough to be in new cell            
             (cells_moved, remainder) = divmod(norm(self.current_position[:2]), self.cell_size)
@@ -113,24 +107,20 @@ class MyRob(CRobLinkAngs):
 
 
 
-            # bayes filter
+
+            # BAYES FILTER        
 
             # motion
             motion = [0,0] if (in_cell and cells_moved == 0 and current_measures is None) else [1,0] if (in_cell and cells_moved != 0) else None
 
             if motion is not None:
-                print(motion)
                 self.bayesFilterMove(motion)
-                          
-
             
             # sensing
             if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
                 current_measures = self.measures.irSensor
-                print(current_measures)
                 self.bayesFilterSense(current_measures)
 
-            
 
 
 
@@ -166,9 +156,7 @@ class MyRob(CRobLinkAngs):
                     self.setVisitingLed(False)
                 if self.measures.returningLed==True:
                     self.setReturningLed(False)
-                self.wander()
-
-            
+                self.wander()         
 
 
 
@@ -408,13 +396,16 @@ class MyRob(CRobLinkAngs):
         angle0 = self._angleBetween(versor, sensor_to_corner0)
         angle1 = self._angleBetween(versor, sensor_to_corner1)
 
-        # check if inside FOV (divide by two to use only the one part of it)
-        angle0_inside = np.abs(angle0) <= self.ir_fov / 2 
-        angle1_inside = np.abs(angle1) <= self.ir_fov / 2 
-
         # check if they are in front of the sensor
         angle0_front = np.abs(angle0) <= np.pi / 2 
-        angle1_front = np.abs(angle1) <= np.pi / 2 
+        angle1_front = np.abs(angle1) <= np.pi / 2
+
+        if not (angle0_front and angle1_front):
+            return None
+
+        # check if inside FOV (divide by two to use only the one part of it)
+        angle0_inside = np.abs(angle0) <= self.ir_fov / 2 
+        angle1_inside = np.abs(angle1) <= self.ir_fov / 2          
 
         # case both angles inside fov
         if angle0_inside and angle1_inside:
@@ -453,6 +444,7 @@ class MyRob(CRobLinkAngs):
         sensors = self._getCellSensorsPoses(row, col)
         measures = []
 
+        # get measures
         for ir_point, ir_versor in zip(sensors[0], sensors[1]):
 
             distances = []
@@ -460,8 +452,9 @@ class MyRob(CRobLinkAngs):
             for wall in self.walls:
 
                 dist = self._computeClosestDistanceToWall(ir_point, ir_versor, wall)
+
                 if dist is not None:
-                    distances.append(dist)
+                    distances.append(dist)                   
 
             measures.append(1/min(distances))
 
@@ -494,7 +487,6 @@ class MyRob(CRobLinkAngs):
         # iterate over each cell                
         for row in range(CELLROWS):
             self.ground_truth.append([self._computeCellMeasures(row, col) for col in range(CELLCOLS)])
-
 
     def computeTraveledDistance(self, in_left, in_right):
         """ Compute the traveled distance since the motion started.
@@ -534,11 +526,6 @@ class MyRob(CRobLinkAngs):
             for update in self.cells_probability:
                 np.savetxt(outfile, np.flip(update, axis=0), fmt='%-5.3f')
                 outfile.write('\n')
-
-
-
-
-
 
     def bayesFilterSense(self, measures):
 
