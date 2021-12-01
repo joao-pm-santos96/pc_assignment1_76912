@@ -10,7 +10,7 @@ import threading
 import numpy as np
 from numpy.linalg import norm
 
-#TODO remove
+#TODO comment
 import matplotlib.pyplot as plt
 
 CELLROWS=7
@@ -78,8 +78,6 @@ class MyRob(CRobLinkAngs):
         current_measures = None
         self.thread = threading.Thread(target=self.computeGroundTruth)
         self.thread.start()
-
-        print('Ready') # TODO Remove
 
         while True:
 
@@ -229,6 +227,7 @@ class MyRob(CRobLinkAngs):
         rotation = np.array([[cos(angle), -sin(angle)], [sin(angle), cos(angle)]])
         return np.dot(rotation, vector)
 
+    # TODO comment
     def plotMapAndRobot(self, point, versor, walls):
         """ Helper method to plot all the walls and the FOV of a 
         given sensor.
@@ -257,6 +256,7 @@ class MyRob(CRobLinkAngs):
         plt.grid(True)
         plt.show()
 
+    # TODO comment
     def plotProbabilitiesMap(self, values, wait=0.5, title='', flip=True):
         """ Helper method to display a probability maps a gray scale matrix.
         """
