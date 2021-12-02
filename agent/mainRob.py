@@ -234,24 +234,26 @@ class MyRob(CRobLinkAngs):
         """
 
         # walls
-        for wall in walls:
-            plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
+        if walls is not None:
+            for wall in walls:
+                plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
 
-        plt.xlim([-1, CELLCOLS * 2 + 1])
-        plt.xticks(range(0, CELLCOLS * 2 + 1, 2))
+            plt.xlim([-1, CELLCOLS * 2 + 1])
+            plt.xticks(range(0, CELLCOLS * 2 + 1, 2))
 
-        plt.ylim([-1, CELLROWS * 2 + 1])
-        plt.yticks(range(0, CELLROWS * 2 + 1, 2))
+            plt.ylim([-1, CELLROWS * 2 + 1])
+            plt.yticks(range(0, CELLROWS * 2 + 1, 2))
 
         # fov
-        fov0 = self._rotateVector(versor, -1 * self.ir_fov / 2)
-        fov0 = np.multiply(fov0, 100)
+        if point is not None and versor is not None:
+            fov0 = self._rotateVector(versor, -1 * self.ir_fov / 2)
+            fov0 = np.multiply(fov0, 100)
 
-        fov1 = self._rotateVector(versor, self.ir_fov / 2)
-        fov1 = np.multiply(fov1, 100)
+            fov1 = self._rotateVector(versor, self.ir_fov / 2)
+            fov1 = np.multiply(fov1, 100)
 
-        for end_point in [np.add(point, fov0), np.add(point, fov1)]:
-            plt.plot([point[0], end_point[0]], [point[1], end_point[1]])
+            for end_point in [np.add(point, fov0), np.add(point, fov1)]:
+                plt.plot([point[0], end_point[0]], [point[1], end_point[1]])
 
         plt.grid(True)
         plt.show()
