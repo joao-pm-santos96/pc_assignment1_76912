@@ -10,8 +10,10 @@ import threading
 import numpy as np
 from numpy.linalg import norm
 
-#TODO comment
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError as e:
+    pass 
 
 CELLROWS=7
 CELLCOLS=14
@@ -37,7 +39,7 @@ class MyRob(CRobLinkAngs):
         self.walls = None
 
         # positional stuff
-        self.current_position = None
+        self.current_displacement = None
         self.last_position = None
         self.last_velocity = None
         
@@ -92,12 +94,11 @@ class MyRob(CRobLinkAngs):
                 self.finish()
                 quit()  
 
-
             # compute traveled distance
-            self.current_position = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
+            self.current_displacement = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
               
             # check if traveled enough to be in new cell            
-            (cells_moved, remainder) = divmod(norm(self.current_position[:2]), self.cell_size)
+            (cells_moved, remainder) = divmod(norm(self.current_displacement[:2]), self.cell_size)
             in_cell = round(remainder, 1) == 0.0
 
             # BAYES FILTER        
@@ -233,46 +234,54 @@ class MyRob(CRobLinkAngs):
         given sensor.
         """
 
-        # walls
-        if walls is not None:
-            for wall in walls:
-                plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
+        try:
+            # walls
+            if walls is not None:
+                for wall in walls:
+                    plt.plot([wall[0][0], wall[1][0]] , [wall[0][1], wall[1][1]])
 
-            plt.xlim([-1, CELLCOLS * 2 + 1])
-            plt.xticks(range(0, CELLCOLS * 2 + 1, 2))
+                plt.xlim([-1, CELLCOLS * 2 + 1])
+                plt.xticks(range(0, CELLCOLS * 2 + 1, 2))
 
-            plt.ylim([-1, CELLROWS * 2 + 1])
-            plt.yticks(range(0, CELLROWS * 2 + 1, 2))
+                plt.ylim([-1, CELLROWS * 2 + 1])
+                plt.yticks(range(0, CELLROWS * 2 + 1, 2))
 
-        # fov
-        if point is not None and versor is not None:
-            fov0 = self._rotateVector(versor, -1 * self.ir_fov / 2)
-            fov0 = np.multiply(fov0, 100)
+            # fov
+            if point is not None and versor is not None:
+                fov0 = self._rotateVector(versor, -1 * self.ir_fov / 2)
+                fov0 = np.multiply(fov0, 100)
 
-            fov1 = self._rotateVector(versor, self.ir_fov / 2)
-            fov1 = np.multiply(fov1, 100)
+                fov1 = self._rotateVector(versor, self.ir_fov / 2)
+                fov1 = np.multiply(fov1, 100)
 
-            for end_point in [np.add(point, fov0), np.add(point, fov1)]:
-                plt.plot([point[0], end_point[0]], [point[1], end_point[1]])
+                for end_point in [np.add(point, fov0), np.add(point, fov1)]:
+                    plt.plot([point[0], end_point[0]], [point[1], end_point[1]])
 
-        plt.grid(True)
-        plt.show()
+            plt.grid(True)
+            plt.show()
+        
+        except NameError:
+            pass
 
     # TODO comment
     def plotProbabilitiesMap(self, values, wait=0.5, title='', flip=True):
         """ Helper method to display a probability maps a gray scale matrix.
         """
 
-        plt.imshow(np.flip(values, axis=0) if flip else values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
+        try:
+            plt.imshow(np.flip(values, axis=0) if flip else values, cmap='gray', interpolation='nearest', vmin=0, vmax=1)
 
-        plt.title(title)
+            plt.title(title)
 
-        if wait == 0.0:
-            plt.show(block=True)
-        else:
-            plt.ion()
-            plt.show(block=False)
-            plt.pause(wait)
+            if wait == 0.0:
+                plt.show(block=True)
+            else:
+                plt.ion()
+                plt.show(block=False)
+                plt.pause(wait)
+        
+        except NameError:
+            pass
 
     def _getCellSensorsPoses(self, row, col):
         """ Computes all the sensor poses for a given cell
@@ -365,20 +374,23 @@ class MyRob(CRobLinkAngs):
                 self.walls.append(side_2) 
 
         # outter walls corners
-        corner0 = (0,0)
-        corner1 = (0, CELLROWS * self.cell_size)
-        corner2 = (CELLCOLS * self.cell_size, CELLROWS * self.cell_size)
-        corner3 = (CELLCOLS * self.cell_size, 0)
+        for row in range(CELLROWS):
+            x = 0
+            self.walls.append([(x, row * self.cell_size), (x, row * self.cell_size + self.cell_size)])
+            
+            x = CELLCOLS * self.cell_size 
+            self.walls.append([(x, row * self.cell_size), (x, row * self.cell_size + self.cell_size)])
 
-        self.walls.append([corner0, corner1])
-        self.walls.append([corner0, corner3])
-        self.walls.append([corner2, corner1])
-        self.walls.append([corner2, corner3])
+        for col in range(CELLCOLS):
+            y = 0
+            self.walls.append([(col * self.cell_size,y),(col * self.cell_size + self.cell_size,y)])
+
+            y = CELLROWS * self.cell_size
+            self.walls.append([(col * self.cell_size,y),(col * self.cell_size + self.cell_size,y)])
         
         
     def _computeClosestDistanceToWall(self, point, versor, wall):
-        """ Computes the closest distance to a given wall. If not in FOV, 
-        returns None
+        """ Computes the closest distance to a given wall. If not in FOV, returns None
         """
 
         distance = None
@@ -438,17 +450,26 @@ class MyRob(CRobLinkAngs):
         sensors = self._getCellSensorsPoses(row, col)
         measures = []
 
+        mean_distance = [norm([np.subtract(np.mean(sensors[0], axis=0), np.mean(wall, axis=0))]) for wall in self.walls]
+        
         # get measures
         for ir_point, ir_versor in zip(sensors[0], sensors[1]):
 
             distances = []
 
-            for wall in self.walls:
+            delta = 0.8
+            while len(distances) == 0 and delta < 1e9:
 
-                dist = self._computeClosestDistanceToWall(ir_point, ir_versor, wall)
+                criteria = [(dist >= delta and dist < (delta + self.cell_size)) for dist in mean_distance]
 
-                if dist is not None:
-                    distances.append(dist)                   
+                delta = delta + self.cell_size
+
+                for wall in np.array(self.walls)[criteria]:
+                    
+                    dist = self._computeClosestDistanceToWall(ir_point, ir_versor, wall)
+
+                    if dist is not None:
+                        distances.append(dist) 
 
             measures.append(1/min(distances))
 
@@ -525,7 +546,7 @@ class MyRob(CRobLinkAngs):
 
         # TODO remove
         for id, update in enumerate(self.cells_probability):
-            self.plotProbabilitiesMap(update, wait=1, title=str(id))
+            self.plotProbabilitiesMap(update, wait=0.0, title=str(id))
         
         with open('localization.out', 'w') as outfile:    
             for update in self.cells_probability:
@@ -643,5 +664,11 @@ if __name__ == '__main__':
         JS 
         """
         rob.initProbabilities()
+
+        # rob._getWallsCorners()
+        # sensor = rob._getCellSensorsPoses(3,2)
+
+        # for point, versor in zip(sensor[0], sensor[1]):
+        #     rob.plotMapAndRobot(point, versor, rob.walls)
 
     rob.run()
