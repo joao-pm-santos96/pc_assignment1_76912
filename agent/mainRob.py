@@ -153,30 +153,30 @@ class MyRob(CRobLinkAngs):
                 self.wander()        
 
     def wander(self):
-        # center_id = 0
-        # left_id = 1
-        # right_id = 2
-        # back_id = 3        
+        center_id = 0
+        left_id = 1
+        right_id = 2
+        back_id = 3        
 
-        # if self.measures.irSensor[center_id] > 5.0\
-        #    or self.measures.irSensor[left_id]   > 5.0\
-        #    or self.measures.irSensor[right_id]  > 5.0\
-        #    or self.measures.irSensor[back_id]   > 5.0:
-        #     print('Rotate left')
-        #     self.driveMotors(-0.1,+0.1)
-        # elif self.measures.irSensor[left_id]> 2.7:
-        #     print('Rotate slowly right')
-        #     self.driveMotors(0.1,0.0)
-        # elif self.measures.irSensor[right_id]> 2.7:
-        #     print('Rotate slowly left')
-        #     self.driveMotors(0.0,0.1)
-        # else:
-        #     print('Go')
+        if self.measures.irSensor[center_id] > 5.0\
+           or self.measures.irSensor[left_id]   > 5.0\
+           or self.measures.irSensor[right_id]  > 5.0\
+           or self.measures.irSensor[back_id]   > 5.0:
+            print('Rotate left')
+            self.driveMotors(-0.1,+0.1)
+        elif self.measures.irSensor[left_id]> 2.7:
+            print('Rotate slowly right')
+            self.driveMotors(0.1,0.0)
+        elif self.measures.irSensor[right_id]> 2.7:
+            print('Rotate slowly left')
+            self.driveMotors(0.0,0.1)
+        else:
+            print('Go')
 
-        self.left_speed = 0.1
-        self.right_speed = 0.1
+            self.left_speed = 0.1
+            self.right_speed = 0.1
 
-        self.driveMotors(self.left_speed, self.right_speed)
+            self.driveMotors(self.left_speed, self.right_speed)
 
     """
     JS METHODS
