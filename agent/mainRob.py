@@ -55,7 +55,10 @@ class MyRob(CRobLinkAngs):
         self.robot_motions = []
         
         # store the probability map
-        self.cells_probability = None       
+        self.cells_probability = None    
+
+        # debug variables
+        self._debug = False   
 
     def setMap(self, labMap):
         # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
@@ -544,14 +547,15 @@ class MyRob(CRobLinkAngs):
             self.bayesFilterMove(motion)
             self.bayesFilterSense(measure)
 
-        # TODO remove
-        for id, update in enumerate(self.cells_probability):
-            self.plotProbabilitiesMap(update, wait=0.0, title=str(id))
-        
         with open('localization.out', 'w') as outfile:    
             for update in self.cells_probability:
                 np.savetxt(outfile, np.flip(update, axis=0), fmt='%-5.3f')
                 outfile.write('\n')
+
+        if self._debug:
+            for id, update in enumerate(self.cells_probability):
+                self.plotProbabilitiesMap(update, wait=1.0, title=str(id))
+        
 
     def bayesFilterSense(self, measures):
         """ Sense portion of the Bayes filter.
@@ -667,6 +671,8 @@ if __name__ == '__main__':
 
         # rob._getWallsCorners()
         # sensor = rob._getCellSensorsPoses(3,2)
+
+        # rob.plotMapAndRobot(None, None, rob.walls)
 
         # for point, versor in zip(sensor[0], sensor[1]):
         #     rob.plotMapAndRobot(point, versor, rob.walls)
