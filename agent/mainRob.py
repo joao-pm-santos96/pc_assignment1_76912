@@ -552,6 +552,8 @@ class MyRob(CRobLinkAngs):
                 np.savetxt(outfile, np.flip(update, axis=0), fmt='%-5.3f')
                 outfile.write('\n')
 
+        print('File ./localization.out saved.')
+
         if self._debug:
             for id, update in enumerate(self.cells_probability):
                 self.plotProbabilitiesMap(update, wait=1.0, title=str(id))
@@ -668,6 +670,8 @@ if __name__ == '__main__':
         JS 
         """
         rob.initProbabilities()
+
+        # rob._debug = True
 
         # rob._getWallsCorners()
         # sensor = rob._getCellSensorsPoses(3,2)
