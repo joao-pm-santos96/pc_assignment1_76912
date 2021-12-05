@@ -55,7 +55,6 @@ In this assignment, the author used the Markov localization to iteratively compu
 \keywords{Peception \and control \and Markov \and localization \and Bayes'.}
 \end{abstract}
 %
-%
 % TODO
 % - agent or robot?
 % - use "sensor measurements" and "control actions"
@@ -102,7 +101,6 @@ A set of assumptions have been made in order to simplify the implementation. Thi
     \item cells are squares with side equal to two diameter
     \item inner walls have a thickness of 0.2 diameter
     \item walls on the border of the map have no thickness
-    \item execution ends when the robot hits a wall 
     \item motion noise does not exist 
     \item sensor noise is Gaussian with mean zero and variance 0.1
     \item the robot motion is deterministic 
@@ -237,16 +235,16 @@ It is in this step were the data gathered from all sensors is fused. Given that 
 \end{algorithm}
 \FloatBarrier
 
-
-
 \section{Implementation}
 \label{sec:implementation}
 
 As stated on section \ref{subsec:assumptions}, the robot only moves in a straight line, from left to right. This poses several advantages, the first of which is that the walls are always perpendicular or parallel to the motion direction of the robot. To take advantage of this, the author choose to set the four \gls{ir} distance sensors perpendicular to the border of the cell, i. e., to 0, 90, -90 and 180 degrees measured from the travelling direction.
 
-Also, given the possible APIs, Python3 and the NumPy \cite{harris2020array} library were chosen given their powerfulness, ease of use and familiarity. Also, the Matplotlib \cite{Hunter:2007} library was used for visualization purposes.
+Also, given the possible APIs, Python3 and the NumPy \cite{harris2020array} library were chosen given their powerfulness, ease of use and familiarity. Also, the Matplotlib \cite{Hunter:2007} library was used for visualization purposes, but will not cause any issue if it is not present on the machine.
 
-Markov localization is computationally intensive since it computes the probability across all possible robot positions. This fact caused the issue where the agent would take a long time since it was called up to it being ready for the simulation to start. To solve this, the author decided that it should use an \emph{offline} approach, this is, while the simulation is running, the agent is also computing in another \emph{thread} the ground truth, while storing both sensor and control data in the main process. Only when the termination criteria is reached is that the agent computes the probability map at each time step (i. e., every time it reached the center of a cell) and outputs it to the required \emph{localization.out} file.
+Markov localization is computationally intensive since it computes the probability across all possible robot positions. This fact caused the issue where the agent would take a long time since it was called up to it being ready for the simulation to start. To solve this, the author decided that it should use an \emph{offline} approach, this is, while the simulation is running, the agent is also computing, in another \emph{thread}, the ground truth, while storing both sensor and control data in the main process. Only when the reader terminates the agent with Ctrl-C is that it computes the probability map at each time step (i. e., every time it reached the center of a cell) and outputs it to the required \emph{localization.out} file. For this reason, please make sure that the Ctrl-C combination is only pressed once or the saving of the file will fail.
+
+The developed code is available at \url{http://code.ua.pt/projects/pc_assignment1_76912}.
 
 \subsection{Initial Probability Distribution}
 \label{subsec:initial_distribution}
@@ -349,7 +347,7 @@ There are some known limitations in the present work. These are stated bellow:
 \begin{enumerate}
     \item The Motion Update procedure is only developed for stationary or one cell right motion control actions. This is on purpose because i) other motions are outside the scope of this assignment and ii) it limits the amount of code needed to compute the updated belief.
     \item The computation of the ground truth is relatively slow. Because of this, the algorithm runs on another \emph{thread} and the actual updating of the beliefs, at each time step, is only done after the simulation ended (\emph{offline} approach). At this stage, the agent should have finish gathering the measurements and control actions at each cell of the simulation.
-    \item The agent uses the collision detection has a termination criteria. This works well is the scope of this assignment given the single \gls{dof} of the motion, but would be counterproductive in a real world scenario.
+    \item The agent uses the SIGINT signal (Ctrl-C) has a termination criteria. This works well is the scope of this assignment, but would not be feasible in a real world scenario.
 \end{enumerate}
 
 \section{Results}
