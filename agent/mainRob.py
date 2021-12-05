@@ -84,99 +84,102 @@ class MyRob(CRobLinkAngs):
         self.thread = threading.Thread(target=self.computeGroundTruth)
         self.thread.start()
 
-        while True:
+        try:
+            while True:
 
-            self.readSensors()
-            
-            if self.measures.endLed:
-                print(self.robName + " exiting")
-                quit()
+                self.readSensors()
+                
+                if self.measures.endLed:
+                    print(self.robName + " exiting")
+                    quit()
 
-            if self.measures.collision:
-                print(self.robName + " collided")   
-                self.finish()
-                quit()  
+                if self.measures.irSensor[0] > 2.6:
+                    state = 'wait' 
 
-            # compute traveled distance
-            self.current_displacement = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
-              
-            # check if traveled enough to be in new cell            
-            (cells_moved, remainder) = divmod(norm(self.current_displacement[:2]), self.cell_size)
-            in_cell = round(remainder, 1) == 0.0
+                # compute traveled distance
+                self.current_displacement = [round(i, 3) for i in self.computeTraveledDistance(self.left_speed, self.right_speed)]
+                
+                # check if traveled enough to be in new cell            
+                (cells_moved, remainder) = divmod(norm(self.current_displacement[:2]), self.cell_size)
+                in_cell = round(remainder, 1) == 0.0
 
-            # BAYES FILTER        
+                # BAYES FILTER        
 
-            # motion
-            motion = [0,0] if (in_cell and cells_moved == 0 and current_measures is None) else [1,0] if (in_cell and cells_moved != 0) else None
+                # motion
+                motion = [0,0] if (in_cell and cells_moved == 0 and current_measures is None) else [1,0] if (in_cell and cells_moved != 0) else None
 
-            if motion is not None:
-                # self.bayesFilterMove(motion)
-                self.robot_motions.append(motion)
-            
-            # sensing
-            if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
-                current_measures = self.measures.irSensor
-                # self.bayesFilterSense(current_measures)
-                self.robot_measures.append(current_measures)
+                if motion is not None:
+                    # self.bayesFilterMove(motion)
+                    self.robot_motions.append(motion)
+                
+                # sensing
+                if in_cell and ((current_measures is None and cells_moved == 0) or (cells_moved != 0)):
+                    current_measures = self.measures.irSensor
+                    # self.bayesFilterSense(current_measures)
+                    self.robot_measures.append(current_measures)
 
-            # behaviors
-            if state == 'stop' and self.measures.start:
-                state = stopped_state
+                # behaviors
+                if state == 'stop' and self.measures.start:
+                    state = stopped_state
 
-            if state != 'stop' and self.measures.stop:
-                stopped_state = state
-                state = 'stop'
+                if state != 'stop' and self.measures.stop:
+                    stopped_state = state
+                    state = 'stop'
 
-            if state == 'run':
-                if self.measures.visitingLed==True:
-                    state='wait'
-                if self.measures.ground==0:
-                    self.setVisitingLed(True)
-                self.wander()
+                if state == 'run':
+                    if self.measures.visitingLed==True:
+                        state='wait'
+                    if self.measures.ground==0:
+                        self.setVisitingLed(True)
+                    self.wander()
 
-            elif state == 'wait':
-                self.setReturningLed(True)
-                if self.measures.visitingLed==True:
-                    self.setVisitingLed(False)
-                if self.measures.returningLed==True:
-                    state='return'
+                elif state == 'wait':
+                    self.setReturningLed(True)
+                    if self.measures.visitingLed==True:
+                        self.setVisitingLed(False)
+                    if self.measures.returningLed==True:
+                        state='return'
 
-                self.left_speed = 0.0
-                self.right_speed = 0.0
-                self.driveMotors(self.left_speed, self.right_speed)
+                    self.left_speed = 0.0
+                    self.right_speed = 0.0
+                    self.driveMotors(self.left_speed, self.right_speed)
 
-            elif state == 'return':
-                if self.measures.visitingLed==True:
-                    self.setVisitingLed(False)
-                if self.measures.returningLed==True:
-                    self.setReturningLed(False)
-                self.wander()        
+                elif state == 'return':
+                    if self.measures.visitingLed==True:
+                        self.setVisitingLed(False)
+                    if self.measures.returningLed==True:
+                        self.setReturningLed(False)
+                    self.wander()       
+        
+        except KeyboardInterrupt:
+            self.finishLocalization()
+
 
     def wander(self):
-        center_id = 0
-        left_id = 1
-        right_id = 2
-        back_id = 3        
+        # center_id = 0
+        # left_id = 1
+        # right_id = 2
+        # back_id = 3        
 
-        if self.measures.irSensor[center_id] > 5.0\
-           or self.measures.irSensor[left_id]   > 5.0\
-           or self.measures.irSensor[right_id]  > 5.0\
-           or self.measures.irSensor[back_id]   > 5.0:
-            print('Rotate left')
-            self.driveMotors(-0.1,+0.1)
-        elif self.measures.irSensor[left_id]> 2.7:
-            print('Rotate slowly right')
-            self.driveMotors(0.1,0.0)
-        elif self.measures.irSensor[right_id]> 2.7:
-            print('Rotate slowly left')
-            self.driveMotors(0.0,0.1)
-        else:
-            print('Go')
+        # if self.measures.irSensor[center_id] > 5.0\
+        #    or self.measures.irSensor[left_id]   > 5.0\
+        #    or self.measures.irSensor[right_id]  > 5.0\
+        #    or self.measures.irSensor[back_id]   > 5.0:
+        #     print('Rotate left')
+        #     self.driveMotors(-0.1,+0.1)
+        # elif self.measures.irSensor[left_id]> 2.7:
+        #     print('Rotate slowly right')
+        #     self.driveMotors(0.1,0.0)
+        # elif self.measures.irSensor[right_id]> 2.7:
+        #     print('Rotate slowly left')
+        #     self.driveMotors(0.0,0.1)
+        # else:
+        #     print('Go')
 
-            self.left_speed = 0.1
-            self.right_speed = 0.1
+        self.left_speed = 0.1
+        self.right_speed = 0.1
 
-            self.driveMotors(self.left_speed, self.right_speed)
+        self.driveMotors(self.left_speed, self.right_speed)
 
     """
     JS METHODS
@@ -535,7 +538,7 @@ class MyRob(CRobLinkAngs):
 
         return (x, y, theta)
 
-    def finish(self):
+    def finishLocalization(self):
         """ Compute the probability map at each step and save it to a file
         """
 
